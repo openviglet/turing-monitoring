@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>URL Validation Report</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+    "
+  >
+    <table
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      style="background-color: #f5f5f5; padding: 20px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            width="600"
+            cellpadding="0"
+            cellspacing="0"
+            style="
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            "
+          >
+            <!-- Header with Viglet Turing branding -->
+            <tr>
+              <td
+                style="
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  padding: 40px 30px;
+                  text-align: center;
+                "
+              >
+                <h1
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 28px;
+                    font-weight: 600;
+                    letter-spacing: -0.5px;
+                  "
+                >
+                  Turing ES
+                </h1>
+                <p
+                  style="
+                    margin: 8px 0 0 0;
+                    color: #e0e7ff;
+                    font-size: 14px;
+                    font-weight: 400;
+                  "
+                >
+                  Semantic Navigation
+                </p>
+              </td>
+            </tr>
+
+            <!-- Alert Banner -->
+            <tr>
+              <td
+                style="
+                  background-color: #fef3c7;
+                  padding: 20px 30px;
+                  border-left: 4px solid #f59e0b;
+                "
+              >
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td
+                      style="padding-right: 15px; vertical-align: middle"
+                      width="40"
+                    >
+                      <div
+                        style="
+                          background-color: #f59e0b;
+                          width: 40px;
+                          height: 40px;
+                          border-radius: 50%;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          font-size: 24px;
+                          color: white;
+                        "
+                      >
+                        ⚠️
+                      </div>
+                    </td>
+                    <td style="vertical-align: middle">
+                      <h2
+                        style="
+                          margin: 0;
+                          color: #92400e;
+                          font-size: 18px;
+                          font-weight: 600;
+                        "
+                      >
+                        URL Validation Report
+                      </h2>
+                      <p
+                        style="
+                          margin: 5px 0 0 0;
+                          color: #78350f;
+                          font-size: 14px;
+                        "
+                      >
+                        {{FAILED_COUNT}} problematic URLs detected
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Summary Statistics -->
+            <tr>
+              <td style="padding: 30px 30px 20px 30px">
+                <h3
+                  style="
+                    margin: 0 0 15px 0;
+                    color: #1f2937;
+                    font-size: 16px;
+                    font-weight: 600;
+                  "
+                >
+                  📊 Summary
+                </h3>
+                <table
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  style="
+                    background-color: #f9fafb;
+                    border-radius: 6px;
+                    padding: 15px;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 8px 0">
+                      <span style="color: #6b7280; font-size: 14px"
+                        >Report Date:</span
+                      >
+                      <strong
+                        style="color: #1f2937; font-size: 14px; float: right"
+                        >{{REPORT_DATE}}</strong
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-top: 1px solid #e5e7eb">
+                      <span style="color: #6b7280; font-size: 14px"
+                        >Total Issues:</span
+                      >
+                      <strong
+                        style="color: #dc2626; font-size: 14px; float: right"
+                        >{{FAILED_COUNT}}</strong
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-top: 1px solid #e5e7eb">
+                      <span style="color: #6b7280; font-size: 14px"
+                        >Status:</span
+                      >
+                      <strong
+                        style="color: #dc2626; font-size: 14px; float: right"
+                        >Action Required</strong
+                      >
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Failed URLs List -->
+            <tr>
+              <td style="padding: 0 30px 30px 30px">
+                <h3
+                  style="
+                    margin: 0 0 15px 0;
+                    color: #1f2937;
+                    font-size: 16px;
+                    font-weight: 600;
+                  "
+                >
+                  🔍 Problematic URLs
+                </h3>
+                <div
+                  style="
+                    background-color: #ffffff;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 6px;
+                    overflow: hidden;
+                  "
+                >
+                  {{FAILED_URLS_TABLE}}
+                </div>
+              </td>
+            </tr>
+
+            <!-- Attachments Info -->
+            <tr>
+              <td style="padding: 0 30px 30px 30px">
+                <div
+                  style="
+                    background-color: #eff6ff;
+                    border: 1px solid #bfdbfe;
+                    border-radius: 6px;
+                    padding: 15px;
+                  "
+                >
+                  <p style="margin: 0; color: #1e40af; font-size: 14px">
+                    📎 <strong>Attachments:</strong> Detailed reports are
+                    attached to this email (TXT and JSON formats)
+                  </p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td
+                style="
+                  background-color: #f9fafb;
+                  padding: 25px 30px;
+                  border-top: 1px solid #e5e7eb;
+                "
+              >
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="text-align: center">
+                      <p
+                        style="
+                          margin: 0 0 10px 0;
+                          color: #6b7280;
+                          font-size: 13px;
+                        "
+                      >
+                        Powered by
+                        <strong style="color: #667eea">Viglet Turing ES</strong>
+                      </p>
+                      <p style="margin: 0; color: #9ca3af; font-size: 12px">
+                        <a
+                          href="https://viglet.com/turing/"
+                          style="color: #667eea; text-decoration: none"
+                          >viglet.com/turing</a
+                        >
+                      </p>
+                      <p
+                        style="
+                          margin: 10px 0 0 0;
+                          color: #9ca3af;
+                          font-size: 11px;
+                        "
+                      >
+                        This is an automated message from URL Checker
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

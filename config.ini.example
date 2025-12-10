@@ -1,0 +1,57 @@
+[DEFAULT]
+# Project default settings
+
+[API]
+# Turing API base URLs to fetch documents
+# Format: base_url.ID = Name;URL
+# where ID is a unique number, Name is display name, and URL is the endpoint
+base_url.1 = Sample;http://localhost:2700/api/sn/Sample/search
+base_url.2 = Sample2;http://localhost:2700/api/sn/Sample2/search
+locale = en
+
+[EMAIL]
+# Email sending settings
+# Recipients email to receive reports (leave empty to disable email sending)
+# For multiple recipients, separate with comma: email1@example.com, email2@example.com, email3@example.com
+recipient = recipient@sample.com
+sender_email = sender@sample.com
+sender_name = URL Checker - Turing
+
+[BREVO]
+# Brevo (Sendinblue) API Key (300 emails/day free)
+# Get it at: https://app.brevo.com/settings/keys/api
+# Leave empty and configure via environment variable BREVO_API_KEY
+api_key = api_key_here
+
+[SELENIUM]
+# Selenium settings
+# Page load timeout in seconds (balanceado para detectar erros mas permitir sites lentos)
+page_load_timeout = 8
+# Element wait timeout
+element_wait_timeout = 4
+# Headless mode (true/false) - automatically overridden on Linux
+headless = true
+
+[RETRY]
+# Retry settings for problematic URLs
+max_attempts = 5
+retry_delay = 2
+
+[PERFORMANCE]
+# Performance settings
+# Number of parallel browsers (aumentado de 2 para 3 = 50% mais rápido)
+parallel_browsers = 3
+# Delay between API pages (reduzido de 0.5 para 0.2)
+page_delay = 0.2
+# Minimum delay between URL checks (removido - sem delay na primeira tentativa)
+url_check_delay = 0.0
+# Disable images to speed up loading (mantém otimizado)
+disable_images = true
+
+[REPORT]
+# Report settings
+output_dir = reports
+# Format: txt, json, both
+format = both
+# Maximum number of URLs to include in email body (rest goes in attachments)
+max_urls_in_email = 50

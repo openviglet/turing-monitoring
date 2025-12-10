@@ -1,0 +1,62 @@
+# Arquivos Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Relatórios e Logs
+reports/
+logs/
+*.log
+
+# Configurações sensíveis
+.env
+config.local.ini
+
+# Selenium
+chromedriver
+geckodriver
+*.crx
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testes
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+config.ini
