@@ -47,6 +47,11 @@ page_delay = 0.2
 url_check_delay = 0.0
 # Disable images to speed up loading (mantém otimizado)
 disable_images = true
+# Status codes considered as failures (comma-separated, e.g., 404,500,502,503)
+error_status_codes = 404
+# Resume from last checkpoint if interrupted (true/false)
+resume_from_checkpoint = true
+error_status_codes = 404,500,502,503
 
 [REPORT]
 # Report settings

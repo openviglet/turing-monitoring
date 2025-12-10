@@ -6,6 +6,8 @@ import json
 import time
 import platform
 import logging
+import os
+from datetime import datetime
 from typing import List, Dict, Optional
 from queue import Queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,7 +35,9 @@ class URLChecker:
         page_delay: float = 0.5,
         url_check_delay: float = 0.3,
         disable_images: bool = True,
-        parallel_browsers: int = 3
+        parallel_browsers: int = 3,
+        error_status_codes: List[int] = None,
+        resume_from_checkpoint: bool = True
     ):
         """
         Initialize URL checker with parallel processing support and browser reuse
@@ -50,6 +54,8 @@ class URLChecker:
             url_check_delay: Delay between URL checks (seconds)
             disable_images: Disable image loading
             parallel_browsers: Number of parallel browsers (1-5)
+            error_status_codes: List of status codes to consider as failures (e.g., [404, 500])
+            resume_from_checkpoint: Resume from last checkpoint if available (default: True)
         """
         self.base_url = base_url
         self.locale = locale
@@ -62,12 +68,19 @@ class URLChecker:
         self.url_check_delay = url_check_delay
         self.disable_images = disable_images
         self.parallel_browsers = max(1, min(5, parallel_browsers))  # Limit 1-5
+        self.error_status_codes = error_status_codes if error_status_codes else [404]
+        self.resume_from_checkpoint = resume_from_checkpoint
         
         self.failed_urls = []
         self.total_urls_checked = 0
         self.driver = None  # Main driver for API calls
         self.logger = logging.getLogger(__name__)
         self.lock = Lock()  # Thread-safe operations
+        
+        # Checkpoint file for persistence
+        self.checkpoint_dir = 'checkpoints'
+        self.checkpoint_file = os.path.join(self.checkpoint_dir, 'checker_progress.json')
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
         
         # Browser pool for reuse
         self.driver_pool = Queue()
@@ -225,6 +238,68 @@ class URLChecker:
         # Main driver for API - needs JavaScript
         self.driver = self._create_driver(for_api=True)
         self.logger.info("Main browser configured successfully!")
+    
+    def _detect_http_error_from_content(self, content: str, url: str = '') -> Optional[int]:
+        """
+        Detect HTTP error status code from page content dynamically
+        Only returns status codes that are in error_status_codes
+        
+        Args:
+            content: Page content (title, body text, or URL)
+            url: Current URL
+            
+        Returns:
+            Detected status code if it's in error_status_codes, None otherwise
+        """
+        content_lower = content.lower()
+        
+        # Define error patterns for each common HTTP status code
+        error_patterns = {
+            400: ['400', 'bad request'],
+            401: ['401', 'unauthorized', 'not authorized'],
+            403: ['403', 'forbidden', 'access denied'],
+            404: ['404', 'not found', 'página não encontrada', 'page not found', 
+                  'file not found', "doesn't exist", 'does not exist', '/404', '/not-found'],
+            500: ['500', 'internal server error', 'erro interno', 'server error'],
+            502: ['502', 'bad gateway', 'gateway error'],
+            503: ['503', 'service unavailable', 'serviço indisponível'],
+            504: ['504', 'gateway timeout']
+        }
+        
+        # Check for each configured error status code
+        for status_code in self.error_status_codes:
+            if status_code in error_patterns:
+                patterns = error_patterns[status_code]
+                for pattern in patterns:
+                    if pattern in content_lower or pattern in url.lower():
+                        return status_code
+        
+        # Check for generic "error" patterns only if we have error codes configured
+        # Be more strict - only flag as error if it's clearly an error page, not just containing the word "error"
+        if self.error_status_codes:
+            strict_error_indicators = ['error page', 'erro:', 'error:']
+            if any(err in content_lower for err in strict_error_indicators):
+                # Return the first configured error code as default
+                return self.error_status_codes[0]
+        
+        return None
+    
+    def _detect_error_status_from_patterns(self, error_type: str) -> int:
+        """
+        Detect appropriate status code based on error type
+        Returns the first configured error status code, or 404 as fallback
+        
+        Args:
+            error_type: Type of error (dns_failure, general_error, etc.)
+            
+        Returns:
+            Status code from configured errors
+        """
+        if self.error_status_codes:
+            # Return first configured error code
+            return self.error_status_codes[0]
+        # Fallback if no error codes configured (shouldn't happen)
+        return 404
     
     def _initialize_driver_pool(self):
         """Initialize pool of reusable browser drivers for URL checking"""
@@ -408,9 +483,11 @@ class URLChecker:
                     socket.gethostbyname(hostname)
                 except socket.gaierror:
                     self.logger.warning(f"DNS resolution failed for {hostname}")
+                    # DNS failed - likely 404 or similar, detect from error_status_codes
+                    status = self._detect_error_status_from_patterns('dns_failure')
                     return {
                         'url': url,
-                        'status_code': 404,
+                        'status_code': status,
                         'page': page,
                         'attempts': attempt
                     }
@@ -429,31 +506,24 @@ class URLChecker:
                 # Get title and check for error patterns
                 page_title = driver.title.lower() if driver.title else ''
                 
-                # Very specific error patterns in title
-                if page_title.strip() in ['404', '404 not found', 'page not found', 'not found', 
-                                           '403', '403 forbidden', 'forbidden',
-                                           '500', '500 internal server error', 'server error',
-                                           'error', 'error page']:
-                    status = 404
-                    
-                # Check if redirected to error page
-                elif any(err in current_url for err in ['/404', '/error', '/not-found', '/oops']):
-                    status = 404
-                    
-                # Check if domain is completely different AND has error indicators
-                # (Some sites redirect to CDN domains, which is OK)
-                elif parsed.netloc and parsed.netloc not in current_url:
-                    # Only flag as error if redirected to completely different domain AND has error indicators
-                    if any(err in current_url for err in ['error', '404', 'notfound']) or \
-                       any(err in page_title for err in ['error', '404', 'not found']):
-                        self.logger.warning(f"Redirected to error page: {parsed.netloc} -> {current_url}")
-                        status = 404
+                # Detect HTTP errors from page title
+                detected_status = self._detect_http_error_from_content(page_title, current_url)
+                if detected_status:
+                    status = detected_status
                 
-                # If URL changed (redirect), report as non-200 status
-                # This will flag 302, 301, and other redirects
+                # If URL changed (redirect), check if redirected to error page
+                # Don't flag as error just because URL changed
                 elif url_changed:
                     self.logger.info(f"URL redirect detected: {url} -> {final_url}")
-                    status = 302  # Mark as redirect
+                    # Only flag as error if redirected to error indicators
+                    if any(err in current_url for err in ['/404', '/error', '/not-found']) or \
+                       any(err in page_title for err in ['404', 'not found', 'error']):
+                        # Redirect to error page - detect which error
+                        detected_status = self._detect_http_error_from_content(page_title + ' ' + current_url, '')
+                        status = detected_status if detected_status else 200
+                    else:
+                        # Normal redirect (301, 302) - consider as success
+                        status = 200
                 
                 # Check body content if status not yet determined
                 if status is None:
@@ -475,33 +545,29 @@ class URLChecker:
                                     body_text = ''
                         
                         # Enhanced error detection in content
-                        error_indicators = [
-                            '404', 'not found', 'página não encontrada', 
-                            'page not found', 'file not found',
-                            'this page doesn\'t exist', 'does not exist',
-                            'error 404', 'http 404', 'erro 404'
-                        ]
+                        detected_status = self._detect_http_error_from_content(body_text, current_url)
                         
                         # Check if body is very small (likely error page)
                         if len(body_text) < 50:
-                            # Very small page - check for error indicators
-                            if any(err in body_text for err in error_indicators):
-                                status = 404
+                            # Very small page - check for error
+                            if detected_status:
+                                status = detected_status
                             else:
                                 # Very small but no error text - could be minimal page, assume OK
                                 status = 200
                         elif len(body_text) < 200:
                             # Small content - only mark as error if has clear error indicators
-                            if any(err in body_text for err in error_indicators):
-                                status = 404
+                            if detected_status:
+                                status = detected_status
                             else:
                                 status = 200
                         else:
                             # Normal sized page - check for prominent error messages
                             # Only flag as error if error indicators appear in first 200 chars
                             first_part = body_text[:200]
-                            if any(err in first_part for err in error_indicators):
-                                status = 404
+                            detected_status_first = self._detect_http_error_from_content(first_part, current_url)
+                            if detected_status_first:
+                                status = detected_status_first
                             else:
                                 status = 200
                             
@@ -512,11 +578,11 @@ class URLChecker:
                     
             except Exception as e:
                 self.logger.warning(f"Error checking status for {url}: {e}")
-                # If there was a general error, mark as error
-                status = 404
+                # If there was a general error, try to detect from configured errors
+                status = self._detect_error_status_from_patterns('general_error')
             
-            # If not 200 and attempts remain, try again
-            if status != 200 and attempt < self.max_attempts:
+            # If error status and attempts remain, try again
+            if status in self.error_status_codes and attempt < self.max_attempts:
                 self.logger.info(f"Status {status} on attempt {attempt} - retrying...")
                 return self._check_url_with_driver(driver, url, page, attempt=attempt + 1)
             
@@ -524,7 +590,8 @@ class URLChecker:
                 'url': url,
                 'status_code': status,
                 'page': page,
-                'attempts': attempt
+                'attempts': attempt,
+                'timestamp': datetime.now().isoformat()
             }
             
         except WebDriverException as e:
@@ -545,12 +612,15 @@ class URLChecker:
                     'error': 'WebDriver connection lost'
                 }
             
-            if attempt < self.max_attempts:
+            # Return as generic error - will be checked against error_status_codes
+            # Only retry if -1 is in error_status_codes (which is unlikely)
+            status_code = -1
+            if status_code in self.error_status_codes and attempt < self.max_attempts:
                 return self._check_url_with_driver(driver, url, page, attempt=attempt + 1)
             
             return {
                 'url': url,
-                'status_code': -1,
+                'status_code': status_code,
                 'page': page,
                 'attempts': attempt,
                 'error': str(e)[:200]
@@ -559,12 +629,14 @@ class URLChecker:
         except Exception as e:
             self.logger.error(f"Unexpected error checking {url}: {e}")
             
-            if attempt < self.max_attempts:
+            # Return as generic error - only retry if -1 is in error_status_codes
+            status_code = -1
+            if status_code in self.error_status_codes and attempt < self.max_attempts:
                 return self._check_url_with_driver(driver, url, page, attempt=attempt + 1)
             
             return {
                 'url': url,
-                'status_code': -1,
+                'status_code': status_code,
                 'page': page,
                 'attempts': attempt,
                 'error': str(e)
@@ -629,7 +701,7 @@ class URLChecker:
                 attempts = result.get('attempts', 1)
                 
                 print(f"  [{index}/{total}] ", end="")
-                if status != 200:
+                if status in self.error_status_codes:
                     print(f"❌ {url} Status: {status} (after {attempts} attempts)")
                 else:
                     if attempts > 1:
@@ -692,8 +764,9 @@ class URLChecker:
                     # Update counters (thread-safe)
                     with self.lock:
                         self.total_urls_checked += 1
-                        if result['status_code'] != 200:
+                        if result['status_code'] in self.error_status_codes:
                             self.failed_urls.append(result)
+                            self.logger.info(f"Failed URL added to checkpoint: {result['url']} (status: {result['status_code']})")
                             
                 except Exception as e:
                     url = future_to_url[future]
@@ -717,10 +790,11 @@ class URLChecker:
             status = result['status_code']
             attempts = result.get('attempts', 1)
             
-            if status != 200:
-                self.logger.warning(f"Problematic URL: {url} (status: {status}, attempts: {attempts})")
+            if status in self.error_status_codes:
+                self.logger.warning(f"Error URL: {url} (status: {status}, attempts: {attempts})")
                 print(f"❌ Status: {status} (after {attempts} attempts)")
                 self.failed_urls.append(result)
+                self.logger.info(f"Failed URL added to checkpoint: {url} (status: {status})")
             else:
                 if attempts > 1:
                     print(f"✓ Status: {status} (after {attempts} attempts)")
@@ -745,6 +819,55 @@ class URLChecker:
         except:
             return False
     
+    def _save_checkpoint(self, current_page: int, last_completed_page: int):
+        """Save current progress to checkpoint file"""
+        try:
+            checkpoint_data = {
+                'timestamp': datetime.now().isoformat(),
+                'base_url': self.base_url,
+                'locale': self.locale,
+                'current_page': current_page,
+                'last_completed_page': last_completed_page,
+                'total_urls_checked': self.total_urls_checked,
+                'failed_urls': self.failed_urls,
+                'error_status_codes': self.error_status_codes
+            }
+            with open(self.checkpoint_file, 'w', encoding='utf-8') as f:
+                json.dump(checkpoint_data, f, indent=2, ensure_ascii=False)
+            self.logger.info(f"Checkpoint saved: page {current_page}, total checked: {self.total_urls_checked}, failed: {len(self.failed_urls)}")
+        except Exception as e:
+            self.logger.warning(f"Failed to save checkpoint: {e}")
+    
+    def _load_checkpoint(self) -> Optional[Dict]:
+        """Load checkpoint from file if it exists and matches current configuration"""
+        try:
+            if not os.path.exists(self.checkpoint_file):
+                return None
+            
+            with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
+                checkpoint = json.load(f)
+            
+            # Verify checkpoint matches current configuration
+            if (checkpoint.get('base_url') == self.base_url and
+                checkpoint.get('locale') == self.locale and
+                checkpoint.get('error_status_codes') == self.error_status_codes):
+                return checkpoint
+            else:
+                self.logger.info("Checkpoint found but configuration changed, starting fresh")
+                return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load checkpoint: {e}")
+            return None
+    
+    def _clear_checkpoint(self):
+        """Clear checkpoint file after successful completion"""
+        try:
+            if os.path.exists(self.checkpoint_file):
+                os.remove(self.checkpoint_file)
+                self.logger.info("Checkpoint cleared")
+        except Exception as e:
+            self.logger.warning(f"Failed to clear checkpoint: {e}")
+    
     def run(self) -> List[Dict]:
         """
         Execute verification of all URLs
@@ -752,15 +875,40 @@ class URLChecker:
         Returns:
             List of URLs that failed verification
         """
-        page = 1
+        # Try to load checkpoint
+        checkpoint = None
+        start_page = 1
+        
+        if self.resume_from_checkpoint:
+            checkpoint = self._load_checkpoint()
+            if checkpoint:
+                start_page = checkpoint.get('current_page', 1)
+                self.total_urls_checked = checkpoint.get('total_urls_checked', 0)
+                self.failed_urls = checkpoint.get('failed_urls', [])
+                
+                print("\n" + "=" * 80)
+                print("♻️  RESUMING FROM CHECKPOINT")
+                print("=" * 80)
+                print(f"  Last checkpoint: {checkpoint.get('timestamp')}")
+                print(f"  Resuming from page: {start_page}")
+                print(f"  URLs checked so far: {self.total_urls_checked}")
+                print(f"  Failed URLs so far: {len(self.failed_urls)}")
+                print("=" * 80)
+                
+                self.logger.info(f"Resuming from checkpoint: page {start_page}")
+        
+        page = start_page
         
         print("\n" + "=" * 80)
         print("Starting URL verification with real browser (Selenium)...")
         if self.parallel_browsers > 1:
             print(f"⚡ Parallel mode: {self.parallel_browsers} simultaneous browsers (with reuse)")
+        print(f"📋 Error status codes configured: {', '.join(map(str, self.error_status_codes))}")
+        print(f"🔄 Resume from checkpoint: {'Enabled' if self.resume_from_checkpoint else 'Disabled'}")
         print("=" * 80)
         
         self.logger.info("Starting URL verification")
+        self.logger.info(f"Error status codes: {self.error_status_codes}")
         
         try:
             # Initialize browser pool for parallel execution
@@ -790,6 +938,9 @@ class URLChecker:
                 else:
                     self.check_urls_sequential(urls, page)
                 
+                # Save checkpoint after processing each page
+                self._save_checkpoint(current_page=page + 1, last_completed_page=page)
+                
                 # Check if more pages exist
                 if not self.has_more_pages(data):
                     self.logger.info(f"Last page ({page}) processed")
@@ -797,6 +948,13 @@ class URLChecker:
                     break
                 
                 page += 1
+        
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Interrupted by user")
+            print(f"💾 Checkpoint saved at page {page}")
+            print("   Run again to resume from this point")
+            self.logger.info(f"User interrupted at page {page}")
+            raise
         
         finally:
             # Close worker browsers
@@ -809,10 +967,13 @@ class URLChecker:
                 print("\nClosing main browser...")
                 self.driver.quit()
         
+        # Clear checkpoint on successful completion
+        self._clear_checkpoint()
+        
         print("\n" + "=" * 80)
         print(f"✓ Verification completed!")
         print(f"  Total URLs checked: {self.total_urls_checked}")
-        print(f"  Problematic URLs: {len(self.failed_urls)}")
+        print(f"  URLs with error status ({', '.join(map(str, self.error_status_codes))}): {len(self.failed_urls)}")
         if self.parallel_browsers > 1:
             print(f"  Parallel browsers used: {self.parallel_browsers} (reused)")
         print("=" * 80)

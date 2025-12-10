@@ -85,6 +85,15 @@ def main():
         disable_images = config.get_bool('PERFORMANCE', 'disable_images', True)
         parallel_browsers = config.get_int('PERFORMANCE', 'parallel_browsers', 1)
         
+        # Error status codes configuration
+        error_codes_str = config.get('PERFORMANCE', 'error_status_codes', '404')
+        error_status_codes = [int(code.strip()) for code in error_codes_str.split(',') if code.strip().isdigit()]
+        if not error_status_codes:
+            error_status_codes = [404]  # Default to 404 if invalid
+        
+        # Checkpoint configuration
+        resume_from_checkpoint = config.get_bool('PERFORMANCE', 'resume_from_checkpoint', True)
+        
         # Report configurations
         output_dir = config.get('REPORT', 'output_dir', 'reports')
         max_urls_in_email = config.get_int('REPORT', 'max_urls_in_email', 50)
@@ -122,6 +131,10 @@ def main():
         
         # Create checker
         logger.info("Initializing checker...")
+        logger.info(f"Error status codes configured: {error_status_codes}")
+        logger.info(f"Resume from checkpoint: {resume_from_checkpoint}")
+        print(f"⚙️  Error status codes: {', '.join(map(str, error_status_codes))}")
+        print(f"♻️  Resume from checkpoint: {'Enabled' if resume_from_checkpoint else 'Disabled'}\n")
         checker = URLChecker(
             base_url=base_url,
             locale=locale,
@@ -133,7 +146,9 @@ def main():
             page_delay=page_delay,
             url_check_delay=url_check_delay,
             disable_images=disable_images,
-            parallel_browsers=parallel_browsers
+            parallel_browsers=parallel_browsers,
+            error_status_codes=error_status_codes,
+            resume_from_checkpoint=resume_from_checkpoint
         )
         
         # Execute verification
@@ -142,7 +157,7 @@ def main():
         
         # Generate reports
         logger.info("Generating reports...")
-        report_gen = ReportGenerator(output_dir)
+        report_gen = ReportGenerator(output_dir, error_status_codes=error_status_codes)
         txt_report, json_report = report_gen.generate(failed_urls)
         
         print(f"\n📄 Reports generated:")

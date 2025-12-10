@@ -60,3 +60,4 @@ desktop.ini
 htmlcov/
 .tox/
 config.ini
+/checkpoints/checker_progress.json
