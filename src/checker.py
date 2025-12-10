@@ -7,6 +7,8 @@ import time
 import platform
 import logging
 import os
+import subprocess
+import psutil
 from datetime import datetime
 from typing import List, Dict, Optional
 from queue import Queue
@@ -22,6 +24,81 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 class URLChecker:
     """URL validator using real Chrome browsers via Selenium with parallel processing and browser reuse"""
+    
+    @staticmethod
+    def kill_orphan_browsers():
+        """
+        Kill all orphan Chrome and ChromeDriver processes
+        Excludes current process tree to avoid killing browsers just launched
+        """
+        killed_count = 0
+        
+        try:
+            print("\n🧹 Cleaning up orphan browser processes...")
+            
+            # Get current process and all its children/grandchildren
+            current_pid = os.getpid()
+            current_process = psutil.Process(current_pid)
+            protected_pids = {current_pid}
+            
+            try:
+                # Recursively get all children of current process
+                for child in current_process.children(recursive=True):
+                    protected_pids.add(child.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+            
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'ppid']):
+                try:
+                    pid = proc.info['pid']
+                    ppid = proc.info.get('ppid')
+                    
+                    # Skip if process is in protected tree
+                    if pid in protected_pids:
+                        continue
+                    
+                    # Skip if parent is in protected tree
+                    if ppid and ppid in protected_pids:
+                        continue
+                    
+                    proc_name = proc.info['name'].lower() if proc.info['name'] else ''
+                    cmdline = ' '.join(proc.info['cmdline']) if proc.info['cmdline'] else ''
+                    
+                    # Check if it's a Chrome/ChromeDriver process launched by Selenium
+                    is_selenium_chrome = False
+                    
+                    # ChromeDriver processes
+                    if 'chromedriver' in proc_name:
+                        is_selenium_chrome = True
+                    
+                    # Chrome processes with remote-debugging or automation flags
+                    elif 'chrome' in proc_name:
+                        if any(flag in cmdline.lower() for flag in [
+                            '--remote-debugging',
+                            '--test-type',
+                            '--enable-automation',
+                            '--disable-blink-features=automationcontrolled'
+                        ]):
+                            is_selenium_chrome = True
+                    
+                    if is_selenium_chrome:
+                        proc.kill()
+                        killed_count += 1
+                        print(f"  ✓ Killed: {proc_name} (PID: {pid})")
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            
+            if killed_count > 0:
+                print(f"✓ Cleaned up {killed_count} orphan browser process(es)")
+                time.sleep(1)  # Give OS time to clean up
+            else:
+                print("✓ No orphan browser processes found")
+                
+        except Exception as e:
+            print(f"⚠️  Warning: Could not clean up browser processes: {e}")
+        
+        print()
     
     def __init__(
         self,
@@ -875,6 +952,9 @@ class URLChecker:
         Returns:
             List of URLs that failed verification
         """
+        # Clean up any orphan browser processes before starting
+        self.kill_orphan_browsers()
+        
         # Try to load checkpoint
         checkpoint = None
         start_page = 1
