@@ -63,6 +63,19 @@ def initialize_services():
         
     if 'running' not in st.session_state:
         st.session_state.running = False
+    
+    if 'processing' not in st.session_state:
+        st.session_state.processing = False
+    
+    if 'processing_action' not in st.session_state:
+        st.session_state.processing_action = None
+    
+    if 'paused' not in st.session_state:
+        # Check if checkpoint exists on startup
+        checkpoint_exists = os.path.exists('checkpoints/checker_progress.json')
+        st.session_state.paused = checkpoint_exists
+        if checkpoint_exists:
+            print("💾 Checkpoint detected - use Resume to continue")
         
     if 'config' not in st.session_state:
         st.session_state.config = {}
@@ -84,7 +97,9 @@ def initialize_services():
         if is_thread_running:
             print("🔄 Detected background process running, reconnecting...")
             st.session_state.running = True
-            st.session_state.reconnected = True
+            # Only show reconnection message if not already in a paused state
+            if not st.session_state.get('paused', False):
+                st.session_state.reconnected = True
             st.session_state.force_rerun = True  # Force UI update
             
             # Try to load checkpoint data into stats
@@ -168,31 +183,105 @@ def handle_start_check(config):
     stats_service = st.session_state.stats_service
     checker_service = st.session_state.checker_service
     
-    # Reset statistics only if not resuming
+    # Check if should resume from checkpoint or start fresh
     checkpoint_exists = os.path.exists('checkpoints/checker_progress.json')
-    if not checkpoint_exists:
-        stats_service.reset()
-    else:
-        print("💾 Loading from checkpoint...")
-        stats_service.load_from_checkpoint()
     
-    # Ensure error_status_codes and resume_from_checkpoint are in config
-    if 'error_status_codes' not in config:
-        config['error_status_codes'] = [404]
-    if 'resume_from_checkpoint' not in config:
-        config['resume_from_checkpoint'] = True
+    if checkpoint_exists:
+        print("💾 Resuming from checkpoint...")
+        stats_service.load_from_checkpoint()
+    else:
+        print("🆕 Starting fresh - resetting statistics...")
+        stats_service.reset()
     
     # Start checker
     st.session_state.running = True
+    st.session_state.paused = False
     st.session_state.runtime_config = config
     checker_service.start_check(config)
 
 
 def handle_stop_check():
-    """Handle stop check button click"""
+    """Handle stop check button click - stops and clears checkpoint"""
     checker_service = st.session_state.checker_service
+    stats_service = st.session_state.stats_service
+    
+    print("🛑 Stop requested - cleaning up...")
+    
+    # Stop the checker thread
     checker_service.stop_check()
+    
+    # Reset UI state
     st.session_state.running = False
+    st.session_state.paused = False
+    
+    # Wait a bit more to ensure thread is completely stopped
+    time.sleep(1.0)
+    
+    # Clear statistics
+    stats_service.reset()
+    
+    # Clear checkpoint to start fresh next time
+    # Try multiple times as thread might be saving it
+    checkpoint_file = 'checkpoints/checker_progress.json'
+    for attempt in range(3):
+        if os.path.exists(checkpoint_file):
+            try:
+                os.remove(checkpoint_file)
+                print(f"🗑️  Checkpoint cleared (attempt {attempt + 1})")
+                break
+            except Exception as e:
+                print(f"⚠️  Failed to delete checkpoint (attempt {attempt + 1}): {e}")
+                time.sleep(0.5)
+    
+    print("✓ Stop completed - ready for new run")
+
+
+def handle_pause_check():
+    """Handle pause check button click - pauses but keeps checkpoint"""
+    checker_service = st.session_state.checker_service
+    
+    # Pause the checker thread (it will wait in a loop)
+    checker_service.pause_check()
+    st.session_state.running = False
+    st.session_state.paused = True
+    print("⏸️  Paused - checker waiting for resume")
+
+
+def handle_resume_check(config):
+    """Handle resume check button click - continues from checkpoint"""
+    stats_service = st.session_state.stats_service
+    checker_service = st.session_state.checker_service
+    
+    print(f"🔄 Resume requested - Current state: running={st.session_state.running}, paused={st.session_state.paused}")
+    
+    # Check if thread is already running (after pause)
+    if checker_service.is_running():
+        print("✓ Checker thread already running - resuming from pause")
+        checker_service.resume_check()
+        st.session_state.running = True
+        st.session_state.paused = False
+        return
+    
+    # If thread is not running, start fresh from checkpoint
+    print("⚠️  No running thread - starting new one from checkpoint")
+    
+    # Load from checkpoint
+    checkpoint_exists = os.path.exists('checkpoints/checker_progress.json')
+    if checkpoint_exists:
+        print("💾 Loading from checkpoint...")
+        stats_service.load_from_checkpoint()
+    else:
+        print("⚠️  No checkpoint found, starting fresh")
+    
+    # Start checker
+    st.session_state.running = True
+    st.session_state.paused = False
+    st.session_state.runtime_config = config
+    
+    print(f"📝 Starting checker service...")
+    checker_service.start_check(config)
+    
+    print(f"✓ Checker started - New state: running={st.session_state.running}, paused={st.session_state.paused}")
 
 
 def send_email_if_needed():
@@ -355,17 +444,59 @@ def main():
     # Render metrics
     render_metrics(stats_service)
     
+    # Show processing notification if active
+    if st.session_state.processing:
+        st.info("⏳ Processing... Please wait")
+    
     # Control buttons
-    col1, col2, col3 = st.columns([1, 1, 4])
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
     
     with col1:
-        if st.button("▶️ Start Check", disabled=st.session_state.running, use_container_width=True):
-            handle_start_check(config)
-            st.rerun()
+        # Show Start if not running and not paused, or Resume if paused
+        if st.session_state.paused:
+            if st.button("▶️ Resume", disabled=st.session_state.processing, use_container_width=True):
+                st.session_state.processing = True
+                st.session_state.processing_action = 'resume'
+                st.rerun()
+        else:
+            if st.button("▶️ Start", disabled=st.session_state.running or st.session_state.processing, use_container_width=True):
+                st.session_state.processing = True
+                st.session_state.processing_action = 'start'
+                st.rerun()
     
     with col2:
-        if st.button("⏹️ Stop", disabled=not st.session_state.running, use_container_width=True):
+        if st.button("⏸️ Pause", disabled=not st.session_state.running or st.session_state.paused or st.session_state.processing, use_container_width=True):
+            st.session_state.processing = True
+            st.session_state.processing_action = 'pause'
+            st.rerun()
+    
+    with col3:
+        if st.button("⏹️ Stop", disabled=(not st.session_state.running and not st.session_state.paused) or st.session_state.processing, use_container_width=True):
+            st.session_state.processing = True
+            st.session_state.processing_action = 'stop'
+            st.rerun()
+    
+    # Handle processing actions
+    if st.session_state.processing and st.session_state.processing_action:
+        action = st.session_state.processing_action
+        st.session_state.processing_action = None  # Clear action
+        
+        if action == 'start':
+            handle_start_check(config)
+            time.sleep(2.0)
+        elif action == 'resume':
+            handle_resume_check(config)
+            time.sleep(2.0)
+        elif action == 'pause':
+            handle_pause_check()
+            time.sleep(0.5)  # Small delay to ensure pause completes
+        elif action == 'stop':
             handle_stop_check()
+            time.sleep(3.0)
+        
+        st.session_state.processing = False
+        st.rerun()
+        st.stop()  # Stop rendering to avoid duplicate content
     
     # Monitoring section (only when running or has data)
     stats = stats_service.get_stats()
@@ -391,13 +522,13 @@ def main():
             progress_placeholder.progress(0.0, text="Progress: 0% | Elapsed: 0s")
         
         # Process queue updates if running
-        if st.session_state.running and checker_service.is_running():
+        if st.session_state.running and not st.session_state.paused and checker_service.is_running():
             process_checker_updates(progress_placeholder)
-        elif st.session_state.running and not checker_service.is_running():
+        elif st.session_state.running and not st.session_state.paused and not checker_service.is_running():
             # Checker finished but still need to process final events in queue
             process_checker_updates(progress_placeholder)
-        elif not st.session_state.running and checker_service.is_running():
-            # Detected running process after reconnection
+        elif not st.session_state.running and not st.session_state.paused and checker_service.is_running():
+            # Only reconnect if not paused (reconnecting after browser close/refresh)
             st.session_state.running = True
             st.info("🔄 Background process detected, reconnecting...")
             st.rerun()
@@ -407,11 +538,11 @@ def main():
             render_chart(stats_service)
             render_logs(stats_service)
         
-        # Continue checking for updates if still running
-        if st.session_state.running and checker_service.is_running():
+        # Continue checking for updates if still running and not paused
+        if st.session_state.running and not st.session_state.paused and checker_service.is_running():
             time.sleep(0.5)  # 500ms refresh rate
             st.rerun()
-        elif st.session_state.running and not checker_service.is_running():
+        elif st.session_state.running and not st.session_state.paused and not checker_service.is_running():
             # One more rerun to ensure final state is displayed
             time.sleep(0.5)
             st.rerun()

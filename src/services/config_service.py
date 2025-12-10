@@ -14,6 +14,12 @@ class ConfigService:
     
     def load_config(self):
         """Load and return complete configuration"""
+        # Reload config file to pick up any changes
+        self.config_loader.config.read(self.config_loader.config_file, encoding='utf-8')
+        
+        # Clear cache to force reload
+        self._cached_config = None
+        
         if self._cached_config:
             return self._cached_config
         
@@ -54,6 +60,15 @@ class ConfigService:
                     default_base_url = 'http://localhost:2700/api/sn/sample/search'
                     base_urls['Default'] = default_base_url
             
+            # Read error_status_codes as list of integers
+            error_codes_str = self.config_loader.get('PERFORMANCE', 'error_status_codes', '404')
+            error_status_codes = [int(code.strip()) for code in error_codes_str.split(',') if code.strip().isdigit()]
+            if not error_status_codes:
+                error_status_codes = [404]  # Default to 404 if invalid
+            
+            # Read resume_from_checkpoint
+            resume_from_checkpoint = self.config_loader.get_bool('PERFORMANCE', 'resume_from_checkpoint', True)
+            
             self._cached_config = {
                 'base_urls': base_urls,
                 'default_base_url': default_base_url,
@@ -67,6 +82,8 @@ class ConfigService:
                 'url_check_delay': self.config_loader.get_float('PERFORMANCE', 'url_check_delay', 0.3),
                 'disable_images': self.config_loader.get_bool('PERFORMANCE', 'disable_images', True),
                 'parallel_browsers': self.config_loader.get_int('PERFORMANCE', 'parallel_browsers', 3),
+                'error_status_codes': error_status_codes,
+                'resume_from_checkpoint': resume_from_checkpoint,
                 'email': {
                     'recipient': self.config_loader.get('EMAIL', 'recipient', ''),
                     'sender_email': self.config_loader.get('EMAIL', 'sender_email', 'noreply@example.com'),
@@ -92,6 +109,8 @@ class ConfigService:
                 'url_check_delay': 0.3,
                 'disable_images': True,
                 'parallel_browsers': 3,
+                'error_status_codes': [404],
+                'resume_from_checkpoint': True,
                 'email': {
                     'recipient': '',
                     'sender_email': 'noreply@example.com',

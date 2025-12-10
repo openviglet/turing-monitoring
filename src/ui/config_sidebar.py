@@ -77,6 +77,8 @@ def render_config_sidebar():
         'url_check_delay': url_check_delay,
         'disable_images': disable_images,
         'parallel_browsers': parallel_browsers,
+        'error_status_codes': default_config['error_status_codes'],
+        'resume_from_checkpoint': default_config['resume_from_checkpoint'],
         'email': default_config['email'],
         'brevo': default_config['brevo']
     }

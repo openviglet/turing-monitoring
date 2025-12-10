@@ -38,6 +38,7 @@ class CheckerService:
         self.status_queue = queue.Queue()
         self.checker = None
         self.stop_requested = False
+        self.pause_requested = False
         self.check_thread = None
         self._initialized = True
         print("🔧 CheckerService singleton initialized")
@@ -48,12 +49,14 @@ class CheckerService:
             raise RuntimeError("Checker is already running")
         
         self.stop_requested = False
+        self.pause_requested = False
         self.check_thread = Thread(target=self._run_check, args=(config,))
         self.check_thread.daemon = False  # Non-daemon to survive session changes
         self.check_thread.start()
     
     def stop_check(self):
         """Stop URL checking"""
+        print("🛑 Stopping checker...")
         self.stop_requested = True
         
         # Give threads time to finish current operations
@@ -63,6 +66,7 @@ class CheckerService:
             try:
                 # Close all browsers immediately to stop operations
                 if hasattr(self.checker, 'worker_drivers'):
+                    print(f"🔒 Closing {len(self.checker.worker_drivers)} worker browsers...")
                     for driver in self.checker.worker_drivers:
                         try:
                             driver.quit()
@@ -71,17 +75,42 @@ class CheckerService:
                     self.checker.worker_drivers.clear()
                 
                 if hasattr(self.checker, 'driver') and self.checker.driver:
+                    print("🔒 Closing main browser...")
                     try:
                         self.checker.driver.quit()
                     except Exception:
                         pass
                     self.checker.driver = None
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️  Error closing browsers: {e}")
         
-        # Wait for thread to finish
-        if self.check_thread and self.check_thread.is_alive():
-            self.check_thread.join(timeout=2.0)
+        # Wait for thread to finish - increased timeout
+        thread = self.check_thread  # Save reference to avoid race condition
+        if thread and thread.is_alive():
+            print("⏳ Waiting for checker thread to finish...")
+            thread.join(timeout=10.0)
+            
+            if thread.is_alive():
+                print("⚠️  Thread still alive after 10s timeout - forcing state cleanup")
+            else:
+                print("✓ Checker thread stopped")
+        
+        # Clear the reference
+        self.check_thread = None
+    
+    def pause_check(self):
+        """Pause URL checking without stopping thread"""
+        print("⏸️  Pausing checker...")
+        self.pause_requested = True
+    
+    def resume_check(self):
+        """Resume URL checking"""
+        print("▶️  Resuming checker...")
+        self.pause_requested = False
+    
+    def is_paused(self):
+        """Check if checker is paused"""
+        return self.pause_requested
     
     def is_running(self):
         """Check if checker is currently running"""
@@ -121,10 +150,25 @@ class CheckerService:
             # Monkey patch to send updates to queue
             original_check = self.checker._check_url_with_driver
             original_fetch = self.checker.fetch_page
+            original_save_checkpoint = self.checker._save_checkpoint
+            
+            def monitored_save_checkpoint(current_page, last_completed_page):
+                # Don't save checkpoint if stop was requested
+                if self.stop_requested:
+                    print("⏹️  Skipping checkpoint save - stop requested")
+                    return
+                original_save_checkpoint(current_page, last_completed_page)
             
             def monitored_check(driver, url, page, attempt=1):
+                # Check for stop request
                 if self.stop_requested:
                     raise KeyboardInterrupt("Stop requested by user")
+                
+                # Check for pause request - wait until resumed
+                while self.pause_requested:
+                    if self.stop_requested:
+                        raise KeyboardInterrupt("Stop requested by user")
+                    time.sleep(0.5)  # Check every 500ms
                 
                 # Only send checking status for first attempt
                 if attempt == 1:
@@ -155,8 +199,15 @@ class CheckerService:
                 return result
             
             def monitored_fetch(page):
+                # Check for stop request
                 if self.stop_requested:
                     raise KeyboardInterrupt("Stop requested by user")
+                
+                # Check for pause request - wait until resumed
+                while self.pause_requested:
+                    if self.stop_requested:
+                        raise KeyboardInterrupt("Stop requested by user")
+                    time.sleep(0.5)  # Check every 500ms
                 
                 result = original_fetch(page)
                 
@@ -183,6 +234,7 @@ class CheckerService:
             
             self.checker._check_url_with_driver = monitored_check
             self.checker.fetch_page = monitored_fetch
+            self.checker._save_checkpoint = monitored_save_checkpoint
             
             # Run check
             failed_urls = self.checker.run()
@@ -208,10 +260,14 @@ class CheckerService:
                 'total_failed': len(self.checker.failed_urls) if self.checker else 0
             })
         except Exception as e:
+            print(f"❌ Error in checker thread: {e}")
+            import traceback
+            traceback.print_exc()
             if not self.stop_requested:
                 self.status_queue.put({
                     'type': 'error',
                     'error': str(e)
                 })
         finally:
+            print("🏁 Checker thread finishing...")
             self.check_thread = None
