@@ -18,12 +18,22 @@ def render_results_table(stats_service):
         
         # Display as expandable items with clickable links
         for idx, result in enumerate(results, 1):
-            with st.expander(f"#{idx} - Status {result['status']} - Page {result['page']}"):
-                st.markdown(f"**URL:** [{result['url']}]({result['url']})")
-                st.markdown(f"**Status Code:** {result['status']}")
-                st.markdown(f"**Page:** {result['page']}")
-                st.markdown(f"**Attempts:** {result['attempts']}")
-                st.markdown(f"**Time:** {result['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}")
+            # Handle missing fields with defaults
+            status = result.get('status', 'Unknown')
+            page = result.get('page', 'N/A')
+            url = result.get('url', 'N/A')
+            attempts = result.get('attempts', 0)
+            timestamp = result.get('timestamp')
+            
+            # Format timestamp safely
+            time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A'
+            
+            with st.expander(f"#{idx} - Status {status} - Page {page}"):
+                st.markdown(f"**URL:** [{url}]({url})")
+                st.markdown(f"**Status Code:** {status}")
+                st.markdown(f"**Page:** {page}")
+                st.markdown(f"**Attempts:** {attempts}")
+                st.markdown(f"**Time:** {time_str}")
         
         # Download button
         json_data = json.dumps(results, indent=2, default=str)
