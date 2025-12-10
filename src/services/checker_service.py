@@ -15,14 +15,32 @@ warnings.filterwarnings('ignore', message='Connection pool is full')
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 
 
+# Global singleton instance to survive Streamlit reruns
+_checker_service_instance = None
+
+
 class CheckerService:
     """Service for managing URL checking operations"""
     
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)"""
+        global _checker_service_instance
+        if _checker_service_instance is None:
+            _checker_service_instance = super(CheckerService, cls).__new__(cls)
+            _checker_service_instance._initialized = False
+        return _checker_service_instance
+    
     def __init__(self):
+        # Only initialize once
+        if self._initialized:
+            return
+        
         self.status_queue = queue.Queue()
         self.checker = None
         self.stop_requested = False
         self.check_thread = None
+        self._initialized = True
+        print("🔧 CheckerService singleton initialized")
     
     def start_check(self, config):
         """Start URL checking in background thread"""
@@ -31,7 +49,7 @@ class CheckerService:
         
         self.stop_requested = False
         self.check_thread = Thread(target=self._run_check, args=(config,))
-        self.check_thread.daemon = True
+        self.check_thread.daemon = False  # Non-daemon to survive session changes
         self.check_thread.start()
     
     def stop_check(self):
@@ -95,7 +113,9 @@ class CheckerService:
                 page_delay=config['page_delay'],
                 url_check_delay=config['url_check_delay'],
                 disable_images=config['disable_images'],
-                parallel_browsers=config['parallel_browsers']
+                parallel_browsers=config['parallel_browsers'],
+                error_status_codes=config.get('error_status_codes', [404]),
+                resume_from_checkpoint=config.get('resume_from_checkpoint', True)
             )
             
             # Monkey patch to send updates to queue

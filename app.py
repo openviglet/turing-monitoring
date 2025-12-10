@@ -67,6 +67,35 @@ def initialize_services():
     if 'config' not in st.session_state:
         st.session_state.config = {}
     
+    # Check for background process on initialization
+    if not st.session_state.running:
+        checker_service = st.session_state.checker_service
+        stats_service = st.session_state.stats_service
+        
+        # Check if thread is running
+        is_thread_running = checker_service.is_running()
+        
+        # Check if checkpoint exists (indicates interrupted process)
+        checkpoint_exists = os.path.exists('checkpoints/checker_progress.json')
+        
+        print(f"Thread running: {is_thread_running}")
+        print(f"Checkpoint exists: {checkpoint_exists}")
+        
+        if is_thread_running:
+            print("🔄 Detected background process running, reconnecting...")
+            st.session_state.running = True
+            st.session_state.reconnected = True
+            st.session_state.force_rerun = True  # Force UI update
+            
+            # Try to load checkpoint data into stats
+            if stats_service.load_from_checkpoint():
+                print("✓ Loaded checkpoint data into statistics")
+            else:
+                print("⚠️  Could not load checkpoint data, starting with empty stats")
+        elif checkpoint_exists:
+            print("💾 Checkpoint found but no active process")
+            print("   Process will resume from checkpoint when started")
+    
     # Validate email configuration on startup
     if 'email_config_validated' not in st.session_state:
         print("\n" + "=" * 80)
@@ -139,8 +168,19 @@ def handle_start_check(config):
     stats_service = st.session_state.stats_service
     checker_service = st.session_state.checker_service
     
-    # Reset statistics
-    stats_service.reset()
+    # Reset statistics only if not resuming
+    checkpoint_exists = os.path.exists('checkpoints/checker_progress.json')
+    if not checkpoint_exists:
+        stats_service.reset()
+    else:
+        print("💾 Loading from checkpoint...")
+        stats_service.load_from_checkpoint()
+    
+    # Ensure error_status_codes and resume_from_checkpoint are in config
+    if 'error_status_codes' not in config:
+        config['error_status_codes'] = [404]
+    if 'resume_from_checkpoint' not in config:
+        config['resume_from_checkpoint'] = True
     
     # Start checker
     st.session_state.running = True
@@ -288,6 +328,23 @@ def main():
     # Initialize services
     initialize_services()
     
+    # Force rerun if reconnected to show proper state
+    if st.session_state.get('force_rerun', False):
+        st.session_state.force_rerun = False
+        print("🔄 Forcing UI refresh after reconnection...")
+        st.rerun()
+    
+    # Show reconnection message if applicable
+    if st.session_state.get('reconnected', False):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.success("🔄 Reconnected to running process! The check is still in progress.")
+        with col2:
+            stats = st.session_state.stats_service.get_stats()
+            if stats['current_page'] > 0:
+                st.info(f"💾 Page {stats['current_page']} | {stats['total_checked']} checked")
+        st.session_state.reconnected = False
+    
     # Get services from session state
     stats_service = st.session_state.stats_service
     checker_service = st.session_state.checker_service
@@ -339,6 +396,11 @@ def main():
         elif st.session_state.running and not checker_service.is_running():
             # Checker finished but still need to process final events in queue
             process_checker_updates(progress_placeholder)
+        elif not st.session_state.running and checker_service.is_running():
+            # Detected running process after reconnection
+            st.session_state.running = True
+            st.info("🔄 Background process detected, reconnecting...")
+            st.rerun()
         
         # Render everything inside the fixed monitoring container
         with monitoring_container:

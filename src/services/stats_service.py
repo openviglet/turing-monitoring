@@ -3,12 +3,30 @@ Stats Service - Manages statistics and metrics calculation
 """
 
 import time
+import json
+import os
+
+
+# Global singleton instance to survive Streamlit reruns
+_stats_service_instance = None
 
 
 class StatsService:
     """Service for managing statistics and metrics"""
     
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)"""
+        global _stats_service_instance
+        if _stats_service_instance is None:
+            _stats_service_instance = super(StatsService, cls).__new__(cls)
+            _stats_service_instance._initialized = False
+        return _stats_service_instance
+    
     def __init__(self):
+        # Only initialize once
+        if self._initialized:
+            return
+        
         self.stats = {
             'total_checked': 0,
             'total_failed': 0,
@@ -21,6 +39,8 @@ class StatsService:
         self.log_history = []
         self.response_times = []
         self.results = []
+        self._initialized = True
+        print("🔧 StatsService singleton initialized")
     
     def reset(self):
         """Reset all statistics"""
@@ -36,6 +56,38 @@ class StatsService:
         self.log_history = []
         self.response_times = []
         self.results = []
+    
+    def load_from_checkpoint(self, checkpoint_file='checkpoints/checker_progress.json'):
+        """Load statistics from checkpoint file if it exists"""
+        try:
+            if not os.path.exists(checkpoint_file):
+                return False
+            
+            with open(checkpoint_file, 'r', encoding='utf-8') as f:
+                checkpoint = json.load(f)
+            
+            # Restore stats
+            self.stats['total_checked'] = checkpoint.get('total_urls_checked', 0)
+            self.stats['current_page'] = checkpoint.get('current_page', 0)
+            
+            # Restore failed URLs
+            failed_urls = checkpoint.get('failed_urls', [])
+            self.stats['total_failed'] = len(failed_urls)
+            self.results = failed_urls
+            
+            # Restore start time (estimate based on checkpoint timestamp)
+            checkpoint_time = checkpoint.get('timestamp', '')
+            if checkpoint_time:
+                from datetime import datetime
+                # Set start time to maintain elapsed time calculation
+                self.stats['start_time'] = time.time() - 300  # Assume 5 min ago as estimate
+            else:
+                self.stats['start_time'] = time.time()
+            
+            return True
+        except Exception as e:
+            print(f"Failed to load checkpoint: {e}")
+            return False
     
     def update_page(self, page, total_pages, total_urls):
         """Update page statistics"""
