@@ -25,8 +25,17 @@ def render_results_table(stats_service):
             attempts = result.get('attempts', 0)
             timestamp = result.get('timestamp')
             
-            # Format timestamp safely
-            time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A'
+            # Format timestamp safely - handle both datetime objects and strings
+            if timestamp:
+                if isinstance(timestamp, str):
+                    time_str = timestamp
+                else:
+                    try:
+                        time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        time_str = str(timestamp)
+            else:
+                time_str = 'N/A'
             
             with st.expander(f"#{idx} - Status {status} - Page {page}"):
                 st.markdown(f"**URL:** [{url}]({url})")

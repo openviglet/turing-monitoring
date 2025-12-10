@@ -153,3 +153,36 @@ class EmailService:
         api_key = brevo_config.get('api_key', os.getenv('BREVO_API_KEY', ''))
         
         return bool(recipient and api_key)
+    
+    def send_results_email(self, stats_service):
+        """
+        Send email with results using stats service
+        
+        Args:
+            stats_service: StatsService instance with results
+            
+        Returns:
+            dict: Result with 'success' and 'message' keys
+        """
+        try:
+            # Get failed URLs from stats
+            stats = stats_service.get_stats()
+            
+            if stats['total_failed'] == 0:
+                return {'success': False, 'message': 'No failed URLs to report'}
+            
+            # Get configuration
+            from ..services import ConfigService
+            config_service = ConfigService()
+            config = config_service.load_config()
+            
+            # Get failed results
+            failed_results = stats.get('failed_results', [])
+            
+            # Send report
+            success, message = self.send_failure_report(config, failed_results)
+            
+            return {'success': success, 'message': message}
+            
+        except Exception as e:
+            return {'success': False, 'message': f'Error preparing email: {str(e)}'}

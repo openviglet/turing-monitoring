@@ -233,7 +233,7 @@ class URLChecker:
             }
             chrome_options.add_experimental_option('prefs', prefs)
             chrome_options.add_argument('--disable-javascript')  # Extra JS blocking
-            chrome_options.page_load_strategy = 'eager'  # Return as soon as DOM is loaded (faster)
+            chrome_options.page_load_strategy = 'none'  # Don't wait for page load - fastest possible
         
         # Common optimizations
         chrome_options.add_argument('--disable-extensions')
@@ -242,6 +242,11 @@ class URLChecker:
         chrome_options.add_argument('--disable-notifications')
         chrome_options.add_argument('--disable-popup-blocking')
         chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        
+        # Prevent hanging on slow connections
+        chrome_options.add_argument('--dns-prefetch-disable')
+        chrome_options.add_argument('--disable-features=NetworkService')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
         
         # Performance optimizations - reduce overhead
         chrome_options.add_argument('--disable-background-networking')
@@ -286,12 +291,19 @@ class URLChecker:
         chrome_options = self._create_chrome_options(for_api=for_api)
         
         try:
-            service = Service(ChromeDriverManager().install())
+            service = Service(
+                ChromeDriverManager().install(),
+                service_args=['--verbose', '--log-path=chromedriver.log']
+            )
+            # Set command timeout to prevent hanging
+            service.start()
             driver = webdriver.Chrome(service=service, options=chrome_options)
         except Exception as e:
             self.logger.warning(f"Error using webdriver-manager: {e}")
             try:
-                driver = webdriver.Chrome(options=chrome_options)
+                service = Service(service_args=['--verbose', '--log-path=chromedriver.log'])
+                service.start()
+                driver = webdriver.Chrome(service=service, options=chrome_options)
             except Exception as e2:
                 self.logger.error(f"Error using system chromedriver: {e2}")
                 raise
@@ -519,13 +531,35 @@ class URLChecker:
             # Configure page timeout
             driver.set_page_load_timeout(self.page_load_timeout)
             
-            # Navigate to URL
+            # Set script timeout to prevent hanging on JavaScript
+            driver.set_script_timeout(self.page_load_timeout)
+            
+            # Navigate to URL with explicit timeout handling
             try:
                 driver.get(url)
                 # No delay needed - page_load_strategy 'eager' waits for DOM ready
             except TimeoutException:
                 self.logger.warning(f"Timeout ({self.page_load_timeout}s) accessing {url}")
                 # Even with timeout, check if we got any response
+            except Exception as e:
+                error_msg = str(e)
+                # Check if it's a connection/read timeout
+                if 'Read timed out' in error_msg or 'HTTPConnectionPool' in error_msg:
+                    self.logger.error(f"Connection timeout to {url}: {error_msg}")
+                    # Stop page load to prevent hanging
+                    try:
+                        driver.execute_script("window.stop();")
+                    except:
+                        pass
+                    # Try to refresh driver if multiple timeouts
+                    if attempt < self.max_attempts:
+                        return self._check_url_with_driver(driver, url, page, attempt=attempt + 1)
+                    return {
+                        'url': url,
+                        'status_code': -1,
+                        'page': page,
+                        'attempts': attempt
+                    }
             except StaleElementReferenceException as e:
                 self.logger.warning(f"Stale element on navigation to {url}, retrying...")
                 if attempt < self.max_attempts:
