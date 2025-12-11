@@ -6,13 +6,16 @@ import time
 import queue
 import logging
 import warnings
+import urllib3
 from datetime import datetime
 from threading import Thread
 from ..checker import URLChecker
 
-# Suppress urllib3 connection pool warnings
+# Suppress urllib3 and connection pool warnings
 warnings.filterwarnings('ignore', message='Connection pool is full')
+warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
 
 
 # Global singleton instance to survive Streamlit reruns

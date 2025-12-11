@@ -38,6 +38,6 @@ echo Starting Streamlit application...
 echo Open your browser at: http://localhost:8501
 echo ========================================
 echo.
-streamlit run app.py
+streamlit run app_gui.py
 
 pause

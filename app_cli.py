@@ -1,13 +1,14 @@
-"""Main - Application entry point"""
+"""CLI - Command Line Interface for URL Checker"""
 
 import sys
 import argparse
 import logging
+import warnings
+import urllib3
 from datetime import datetime
 from src.config_loader import ConfigLoader
-from src.checker import URLChecker
+from src.services import CheckerService, StatsService, ConfigService, EmailService
 from src.report_generator import ReportGenerator
-from src.email_sender import EmailSender
 
 
 def setup_logging(verbose: bool = False):
@@ -28,8 +29,15 @@ def setup_logging(verbose: bool = False):
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
-        ]
+        ],
+        force=True
     )
+    
+    # Suppress warnings
+    warnings.filterwarnings('ignore')
+    logging.getLogger('urllib3').setLevel(logging.ERROR)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def print_banner():
@@ -45,6 +53,7 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description='URL Checker - Turing URL Validator')
     parser.add_argument('--config', default='config.ini', help='Configuration file')
+    parser.add_argument('--url-name', help='Name of the base URL from config (e.g., prod-publish, stage-author)')
     parser.add_argument('--verbose', action='store_true', help='Verbose mode')
     parser.add_argument('--headless', action='store_true', help='Headless mode (no GUI)')
     parser.add_argument('--no-email', action='store_true', help='Do not send email')
@@ -62,8 +71,73 @@ def main():
         logger.info("Loading configurations...")
         config = ConfigLoader(args.config)
         
+        # Get all base URLs from config
+        base_urls = {}
+        api_section = config.config['API']
+        for key in api_section:
+            if key.startswith('base_url.'):
+                value = api_section[key]
+                if ';' in value:
+                    name, url = value.split(';', 1)
+                    base_urls[name.strip()] = url.strip()
+        
+        # Select base URL
+        if args.url_name:
+            # Use specified URL name
+            if args.url_name not in base_urls:
+                print(f"\n❌ ERROR: URL name '{args.url_name}' not found in config")
+                print(f"\nAvailable URL names:")
+                for name in sorted(base_urls.keys()):
+                    print(f"  - {name}: {base_urls[name]}")
+                return 1
+            base_url = base_urls[args.url_name]
+            print(f"\n✓ Using URL: {args.url_name}")
+            print(f"  {base_url}\n")
+        elif len(base_urls) == 1:
+            # Only one URL available
+            name = list(base_urls.keys())[0]
+            base_url = base_urls[name]
+            print(f"\n✓ Using URL: {name}")
+            print(f"  {base_url}\n")
+        else:
+            # Multiple URLs available - show menu
+            print("\n" + "=" * 80)
+            print("SELECT BASE URL")
+            print("=" * 80)
+            names = sorted(base_urls.keys())
+            for i, name in enumerate(names, 1):
+                print(f"{i}. {name}")
+                print(f"   {base_urls[name]}")
+            print("=" * 80)
+            
+            while True:
+                try:
+                    choice = input("\nEnter number or name: ").strip()
+                    
+                    # Try as number
+                    if choice.isdigit():
+                        idx = int(choice) - 1
+                        if 0 <= idx < len(names):
+                            selected_name = names[idx]
+                            base_url = base_urls[selected_name]
+                            print(f"\n✓ Selected: {selected_name}")
+                            print(f"  {base_url}\n")
+                            break
+                        else:
+                            print(f"Invalid number. Please enter 1-{len(names)}")
+                    # Try as name
+                    elif choice in base_urls:
+                        base_url = base_urls[choice]
+                        print(f"\n✓ Selected: {choice}")
+                        print(f"  {base_url}\n")
+                        break
+                    else:
+                        print(f"Invalid input. Enter number (1-{len(names)}) or name")
+                except KeyboardInterrupt:
+                    print("\n\n❌ Operation cancelled by user")
+                    return 1
+        
         # Get configurations
-        base_url = config.get('API', 'base_url')
         locale = config.get('API', 'locale', 'pt')
         email_recipient = config.get('EMAIL', 'recipient')
         email_sender = config.get('EMAIL', 'sender_email')
@@ -135,25 +209,83 @@ def main():
         logger.info(f"Resume from checkpoint: {resume_from_checkpoint}")
         print(f"⚙️  Error status codes: {', '.join(map(str, error_status_codes))}")
         print(f"♻️  Resume from checkpoint: {'Enabled' if resume_from_checkpoint else 'Disabled'}\n")
-        checker = URLChecker(
-            base_url=base_url,
-            locale=locale,
-            page_load_timeout=page_load_timeout,
-            element_wait_timeout=element_wait_timeout,
-            headless=headless,
-            max_attempts=max_attempts,
-            retry_delay=retry_delay,
-            page_delay=page_delay,
-            url_check_delay=url_check_delay,
-            disable_images=disable_images,
-            parallel_browsers=parallel_browsers,
-            error_status_codes=error_status_codes,
-            resume_from_checkpoint=resume_from_checkpoint
-        )
         
-        # Execute verification
-        logger.info("Starting URL verification...")
-        failed_urls = checker.run()
+        # Initialize services (same as Streamlit app)
+        config_service = ConfigService()
+        checker_service = CheckerService()
+        stats_service = StatsService()
+        email_service = EmailService()
+        
+        # Prepare configuration for CheckerService
+        checker_config = {
+            'base_url': base_url,
+            'locale': locale,
+            'page_load_timeout': page_load_timeout,
+            'element_wait_timeout': element_wait_timeout,
+            'headless': headless,
+            'max_attempts': max_attempts,
+            'retry_delay': retry_delay,
+            'page_delay': page_delay,
+            'url_check_delay': url_check_delay,
+            'disable_images': disable_images,
+            'parallel_browsers': parallel_browsers,
+            'error_status_codes': error_status_codes,
+            'resume_from_checkpoint': resume_from_checkpoint
+        }
+        
+        # Start checking in background (same as Streamlit)
+        logger.info("Starting URL verification in background...")
+        checker_service.start_check(checker_config)
+        
+        # Monitor progress
+        print("\n" + "=" * 80)
+        print("CHECKING PROGRESS")
+        print("=" * 80)
+        
+        import time
+        last_checked = 0
+        
+        while checker_service.is_running():
+            # Get updates from queue
+            updates = checker_service.get_updates(max_updates=10)
+            
+            for update in updates:
+                if update['type'] == 'page_update':
+                    stats_service.update_page(
+                        update['page'],
+                        update.get('total_pages', 0),
+                        update.get('total_urls', 0)
+                    )
+                elif update['type'] == 'result':
+                    stats_service.add_result(
+                        update['url'],
+                        update['status'],
+                        update['page'],
+                        update['attempts'],
+                        update.get('response_time'),
+                        update['timestamp']
+                    )
+                elif update['type'] == 'complete':
+                    break
+            
+            # Display progress
+            stats = stats_service.get_stats()
+            if stats['total_checked'] > last_checked:
+                last_checked = stats['total_checked']
+                progress_pct = int((stats['total_checked'] / stats['total_urls'] * 100)) if stats['total_urls'] > 0 else 0
+                elapsed = stats_service.get_elapsed_time()
+                eta = stats.get('estimated_time', 'calculating...')
+                
+                print(f"\r  Progress: {stats['total_checked']}/{stats['total_urls']} ({progress_pct}%) | "
+                      f"Failed: {stats['total_failed']} | Elapsed: {elapsed} | ETA: {eta}      ", end='', flush=True)
+            
+            time.sleep(0.5)
+        
+        print("\n" + "=" * 80 + "\n")
+        
+        # Get final results
+        stats = stats_service.get_stats()
+        failed_urls = stats_service.get_results()
         
         # Generate reports
         logger.info("Generating reports...")
@@ -177,44 +309,19 @@ def main():
             logger.info("Email sending disabled or not configured")
         elif send_email and len(failed_urls) > 0:
             try:
-                # Detailed debug logging
-                print(f"\n🔍 DEBUG - Email Configuration:")
-                print(f"   Recipient: {email_recipient}")
-                print(f"   Sender: {email_sender}")
-                print(f"   Sender Name: {email_sender_name}")
-                print(f"   Brevo API Key: {'*' * 20}{brevo_api_key[-10:] if brevo_api_key and len(brevo_api_key) > 10 else 'NOT_SET'}")
-                print(f"   Failed URLs count: {len(failed_urls)}")
-                print(f"   TXT Report: {txt_report}")
-                print(f"   JSON Report: {json_report}")
-                print(f"   Max URLs in email: {max_urls_in_email}")
-                
-                logger.debug(f"Email config - Recipient: {email_recipient}, Sender: {email_sender}")
-                logger.debug(f"Brevo API key present: {bool(brevo_api_key)}, length: {len(brevo_api_key) if brevo_api_key else 0}")
-                logger.debug(f"Failed URLs: {len(failed_urls)}, Reports: {txt_report}, {json_report}")
-                
                 print(f"\n📧 Sending email report to: {email_recipient}")
                 print(f"   Failed URLs to report: {len(failed_urls)}")
                 logger.info(f"Attempting to send email to {email_recipient}")
                 
-                # Create EmailSender instance
-                print(f"   🔧 Creating EmailSender instance...")
-                logger.debug("Creating EmailSender instance")
-                email = EmailSender(
-                    api_key=brevo_api_key,
-                    sender_email=email_sender,
-                    sender_name=email_sender_name,
-                    max_urls_in_email=max_urls_in_email
-                )
-                logger.debug("EmailSender instance created successfully")
+                # Use EmailService (same as Streamlit)
+                result = email_service.send_results_email(stats_service)
                 
-                # Send report
-                print(f"   📤 Calling send_report method...")
-                logger.debug("Calling EmailSender.send_report()")
-                email.send_report(email_recipient, failed_urls, txt_report, json_report)
-                logger.debug("send_report() completed without exceptions")
-                
-                print(f"✅ Email successfully sent to: {email_recipient}")
-                logger.info(f"Email successfully sent to {email_recipient}")
+                if result.get('success'):
+                    print(f"✅ Email successfully sent to: {email_recipient}")
+                    logger.info(f"Email successfully sent to {email_recipient}")
+                else:
+                    print(f"⚠️  {result.get('message', 'Failed to send email')}")
+                    logger.warning(f"Email not sent: {result.get('message')}")
                 
             except ImportError as e:
                 print(f"❌ Import Error: Missing required library - {e}")
@@ -238,8 +345,8 @@ def main():
         print("FINAL SUMMARY")
         print("=" * 80)
         print(f"✓ Verification completed successfully!")
-        print(f"  Total URLs checked: {checker.total_urls_checked}")
-        print(f"  Problematic URLs: {len(failed_urls)}")
+        print(f"  Total URLs checked: {stats['total_checked']}")
+        print(f"  Problematic URLs: {stats['total_failed']}")
         print("=" * 80 + "\n")
         
         return 0

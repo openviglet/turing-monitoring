@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import psutil
+import urllib3
 from datetime import datetime
 from typing import List, Dict, Optional
 from queue import Queue
@@ -20,6 +21,14 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
 from webdriver_manager.chrome import ChromeDriverManager
+
+# Increase urllib3 connection pool size for parallel browsers
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+http = urllib3.PoolManager(
+    maxsize=20,  # Maximum connections per host
+    block=False,  # Don't block if pool is full
+    retries=urllib3.Retry(3)
+)
 
 
 class URLChecker:

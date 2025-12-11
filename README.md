@@ -25,6 +25,14 @@ Automated URL validation system for Turing ES using Selenium for real browser na
 - Google Chrome or Chromium installed
 - Internet connection
 
+### Architecture
+
+The application is **unified in a single file** (`app.py`) that automatically detects the execution mode:
+- **GUI mode**: When launched via Streamlit (`run-web.bat` or `streamlit run app.py`)
+- **CLI mode**: When launched directly (`run-cli.bat` or `python app.py`)
+
+Both modes share the same background services and architecture for consistency.
+
 ### Quick Start
 
 #### Option 1: Web Interface (Recommended)
@@ -50,20 +58,44 @@ Automated execution for scripts:
 
 **Windows (PowerShell):**
 ```powershell
-.\run.bat
+# Interactive menu (select URL from list)
+.\run-cli.bat
+
+# Direct URL selection by name
+.\run-cli.bat prod-publish
+
+# With options
+.\run-cli.bat prod-publish --verbose
+.\run-cli.bat stage-author --no-email
 ```
 
 **Linux/Mac:**
 ```bash
-chmod +x run.sh
-./run.sh
+chmod +x run-cli.sh
+
+# Interactive menu (select URL from list)
+./run-cli.sh
+
+# Direct URL selection by name
+./run-cli.sh prod-publish
+
+# With options
+./run-cli.sh prod-publish --verbose
+./run-cli.sh stage-author --no-email
 ```
+
+**Available CLI options:**
+- `--url-name <name>`: Select URL by name (e.g., prod-publish, stage-author)
+- `--verbose`: Enable detailed logging
+- `--headless`: Run browser in headless mode
+- `--no-email`: Disable email sending
+- `--config <file>`: Use custom config file
 
 **What the scripts do:**
 - ✓ Check Python version
 - ✓ Create virtual environment (venv)
 - ✓ Install dependencies
-- ✓ Run the program
+- ✓ Run `app.py` in the appropriate mode
 
 ### Manual Installation
 
@@ -94,16 +126,20 @@ The `config.ini` file contains all system settings:
 
 ```ini
 [API]
-base_url = http://localhost:2700/api/sn/sample/search
-locale = en
+# Multiple base URLs - Format: base_url.ID = name;url
+base_url.1 = prod-publish;https://turing.insper.edu.br/api/sn/insper-prod-publish/search
+base_url.2 = prod-author;https://turing.insper.edu.br/api/sn/insper-prod-author/search
+base_url.3 = stage-publish;https://hml-turing.insper.edu.br/api/sn/insper-stage-publish/search
+base_url.4 = stage-author;https://hml-turing.insper.edu.br/api/sn/insper-stage-author/search
+locale = pt
 
 [EMAIL]
 recipient = your-email@gmail.com
 sender_email = noreply@example.com
 sender_name = URL Checker - Turing
 
-[MAILCHIMP]
-# Get your key at: https://mandrillapp.com/settings
+[BREVO]
+# Get your key at: https://app.brevo.com/settings/keys/api
 api_key = your-api-key-here
 
 [SELENIUM]
@@ -128,6 +164,31 @@ max_urls_in_email = 50
 
 ### Key Configuration Parameters
 
+#### Multiple Base URLs
+
+You can configure multiple base URLs in `config.ini`:
+
+```ini
+[API]
+base_url.1 = prod-publish;https://turing.insper.edu.br/api/sn/insper-prod-publish/search
+base_url.2 = stage-author;https://hml-turing.insper.edu.br/api/sn/insper-stage-author/search
+```
+
+**Format:** `base_url.ID = name;url`
+- **ID**: Unique number (1, 2, 3...)
+- **name**: Short identifier (used in CLI)
+- **url**: Full API endpoint
+
+**CLI Usage:**
+```bash
+# Interactive menu
+./run-cli.sh
+
+# Direct selection by name
+./run-cli.sh prod-publish
+./run-cli.sh stage-author
+```
+
 #### Parallel Execution
 
 The system supports parallel URL checking with multiple simultaneous browsers:
@@ -150,24 +211,24 @@ You can use environment variables to override `config.ini` settings:
 
 ```bash
 # Windows (PowerShell):
-$env:MAILCHIMP_API_KEY="your-key-here"
+$env:BREVO_API_KEY="your-key-here"
 $env:EMAIL_RECIPIENT="your-email@gmail.com"
 
 # Linux/Mac:
-export MAILCHIMP_API_KEY="your-key-here"
+export BREVO_API_KEY="your-key-here"
 export EMAIL_RECIPIENT="your-email@gmail.com"
 ```
 
-**Variable format:** `SECTION_KEY` (e.g., `MAILCHIMP_API_KEY`, `EMAIL_RECIPIENT`)
+**Variable format:** `SECTION_KEY` (e.g., `BREVO_API_KEY`, `EMAIL_RECIPIENT`)
 
-### Mailchimp Configuration
+### Brevo Configuration
 
-To send emails, you need to configure Mailchimp Transactional (Mandrill):
+To send emails, you need to configure Brevo (formerly Sendinblue):
 
-1. Access: https://mandrillapp.com/
-2. Create account or login
-3. Go to **Settings** → **API Keys**
-4. Copy your API Key
+1. Access: https://app.brevo.com/
+2. Create account or login (300 emails/day free)
+3. Go to **Settings** → **SMTP & API** → **API Keys**
+4. Create new API Key
 5. Configure in `config.ini` or via environment variable
 
 ## 📖 Usage
