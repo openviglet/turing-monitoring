@@ -144,30 +144,13 @@ class ProcessManager:
     def _send_email_if_needed():
         """Send email notification if configured"""
         try:
-            config_service = st.session_state.config_service
             email_service = st.session_state.email_service
             stats_service = st.session_state.stats_service
             
-            config = config_service.load_config()
-            email_config = config.get('email', {})
-            
-            # Check if email is enabled
-            if not email_config.get('enabled', True):
-                return
-            
-            # Check if should send email
-            send_condition = email_config.get('send_condition', 'always')
             stats = stats_service.get_stats()
             
-            should_send = False
-            if send_condition == 'always':
-                should_send = True
-            elif send_condition == 'on_failure' and stats['total_failed'] > 0:
-                should_send = True
-            elif send_condition == 'on_success' and stats['total_failed'] == 0:
-                should_send = True
-            
-            if should_send:
+            # Only send email if there are failed URLs
+            if stats['total_failed'] > 0:
                 result = email_service.send_results_email(stats_service)
                 ProcessManager._display_email_status(result)
         except Exception as e:

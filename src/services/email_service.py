@@ -40,13 +40,7 @@ class EmailService:
         sender_name = email_config.get('sender_name', 'URL Checker - Turing')
         api_key = brevo_config.get('api_key', os.getenv('BREVO_API_KEY', ''))
         
-        print(f"[EmailService] Checking configuration:")
-        print(f"  - Recipient: {recipient}")
-        print(f"  - Sender: {sender_email}")
-        print(f"  - API Key: {'Yes' if api_key else 'No'}")
-        
         if not api_key:
-            print(f"[EmailService] ERROR: Brevo API key not configured")
             return False, "Brevo API key not configured"
         
         try:
@@ -64,55 +58,38 @@ class EmailService:
                     }
                     failed_urls.append(normalized)
             
-            print(f"[EmailService] Filtered {len(failed_urls)} failed URLs from {len(failed_results)} results")
-            
             if not failed_urls:
-                print(f"[EmailService] ERROR: No failed URLs found in results")
                 return False, "No failed URLs found in results"
             
             # Initialize email sender
-            print(f"[EmailService] Initializing EmailSender...")
             self.email_sender = EmailSender(
                 api_key=api_key,
                 sender_email=sender_email,
                 sender_name=sender_name,
                 max_urls_in_email=50
             )
-            print(f"[EmailService] EmailSender initialized successfully")
             
             # Generate temporary report paths
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             txt_report = f"temp_report_{timestamp}.txt"
             json_report = f"temp_report_{timestamp}.json"
             
-            print(f"[EmailService] Generated report filenames:")
-            print(f"  - TXT: {txt_report}")
-            print(f"  - JSON: {json_report}")
-            
             # Create temporary report files
-            print(f"[EmailService] Creating temporary report files...")
             self._create_report_files(failed_urls, txt_report, json_report)
-            print(f"[EmailService] ✓ Report files created")
             
             # Send email
-            print(f"[EmailService] Calling email_sender.send_report()...")
             self.email_sender.send_report(recipient, failed_urls, txt_report, json_report)
             
             # Clean up temporary files
             try:
                 os.remove(txt_report)
                 os.remove(json_report)
-                print(f"[EmailService] ✓ Temporary files cleaned up")
             except:
                 pass
             
-            print(f"[EmailService] ✓ Email sent successfully to {recipient}")
             return True, f"Report sent to {recipient}"
             
         except Exception as e:
-            print(f"[EmailService] ❌ Exception occurred: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return False, f"Error sending email: {str(e)}"
     
     def _create_report_files(self, failed_urls, txt_path, json_path):
@@ -178,6 +155,9 @@ class EmailService:
             
             # Get failed results
             failed_results = stats.get('failed_results', [])
+            
+            if not failed_results:
+                return {'success': False, 'message': 'No failed results found in stats'}
             
             # Send report
             success, message = self.send_failure_report(config, failed_results)

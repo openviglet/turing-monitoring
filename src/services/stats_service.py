@@ -212,7 +212,10 @@ class StatsService:
     
     def get_stats(self):
         """Get current statistics"""
-        return self.stats.copy()
+        stats = self.stats.copy()
+        # Include failed results for email reporting
+        stats['failed_results'] = self.results.copy()
+        return stats
     
     def get_logs(self, count=15):
         """Get recent log entries"""
