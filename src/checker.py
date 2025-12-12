@@ -345,51 +345,69 @@ class URLChecker:
         This version simplifies logic to prioritize Snap and then Selenium Manager,
         bypassing the problematic skip_driver_version_check setting.
         """
+        self.logger.info("[AGENT_DEBUG] --- Entering _create_driver (v4_verbose) ---")
         chrome_options = self._create_chrome_options(for_api=for_api)
         service = None
         
+        self.logger.info(f"[AGENT_DEBUG] Current platform: {platform.system()}")
         # Priority 1: Handle Linux with Snap Chromium
         if platform.system() == 'Linux':
+            self.logger.info("[AGENT_DEBUG] Platform is Linux. Checking for Snap Chromium.")
             snap_browser_path = None
+            
             if os.path.exists('/snap/bin/chromium-browser'):
+                self.logger.info("[AGENT_DEBUG] Found '/snap/bin/chromium-browser'")
                 snap_browser_path = '/snap/bin/chromium-browser'
             elif os.path.exists('/snap/bin/chromium'):
+                self.logger.info("[AGENT_DEBUG] Found '/snap/bin/chromium'")
                 snap_browser_path = '/snap/bin/chromium'
+            else:
+                self.logger.info("[AGENT_DEBUG] No Snap Chromium browser path found.")
 
             if snap_browser_path:
-                self.logger.info(f"Detected Snap Chromium at {snap_browser_path}")
+                self.logger.info(f"[AGENT_DEBUG] Detected Snap Chromium at {snap_browser_path}")
                 chrome_options.binary_location = snap_browser_path
                 
                 snap_driver_path = "/usr/lib/chromium-browser/chromedriver"
+                self.logger.info(f"[AGENT_DEBUG] Checking for Snap driver at {snap_driver_path}")
                 if os.path.exists(snap_driver_path):
-                    self.logger.info(f"Found associated driver at {snap_driver_path}. Using it.")
+                    self.logger.info(f"[AGENT_DEBUG] Found associated driver at {snap_driver_path}. Using it.")
                     service = Service(executable_path=snap_driver_path)
                 else:
-                    self.logger.warning(f"Snap Chromium detected, but driver not found at {snap_driver_path}.")
-                    self.logger.warning("Will proceed with Selenium Manager, but this might fail.")
-                    self.logger.warning("For a more reliable setup, please run: sudo apt install chromium-chromedriver")
+                    self.logger.warning(f"[AGENT_DEBUG] Snap Chromium detected, but driver not found at {snap_driver_path}.")
+                    self.logger.warning("[AGENT_DEBUG] Will proceed with Selenium Manager, but this might fail.")
+                    self.logger.warning("[AGENT_DEBUG] For a more reliable setup, please run: sudo apt install chromium-chromedriver")
+            else:
+                self.logger.info("[AGENT_DEBUG] Snap-specific logic did not find a browser.")
+        else:
+            self.logger.info("[AGENT_DEBUG] Platform is not Linux. Skipping Snap check.")
+
 
         # Priority 2: Default to Selenium Manager
-        # This will run if not on Linux, or if the Snap driver wasn't found.
         if not service:
-            self.logger.info("Initializing driver with Selenium Manager (automatic setup).")
+            self.logger.info("[AGENT_DEBUG] Service not yet configured. Defaulting to Selenium Manager.")
             # If skip_driver_version_check was true, we are ignoring it to fix the issue.
             if self.skip_driver_version_check:
-                self.logger.warning("Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
+                self.logger.warning("[AGENT_DEBUG] Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
             service = Service()
+        else:
+            self.logger.info("[AGENT_DEBUG] Service was configured by Snap logic. Skipping Selenium Manager default.")
 
         try:
+            self.logger.info("[AGENT_DEBUG] Attempting to initialize webdriver.Chrome...")
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.logger.info("WebDriver initialized successfully.")
+            self.logger.info("[AGENT_DEBUG] WebDriver initialized successfully.")
         except Exception as e:
-            self.logger.error(f"FATAL: Failed to initialize any WebDriver: {e}")
-            self.logger.error("Please ensure Google Chrome or Chromium is installed and accessible.")
+            self.logger.error(f"[AGENT_DEBUG] FATAL: Failed to initialize any WebDriver: {e}")
+            self.logger.error("[AGENT_DEBUG] Please ensure Google Chrome or Chromium is installed and accessible.")
             raise
 
         # Final setup and return
+        self.logger.info("[AGENT_DEBUG] Running final cdp_cmd to hide 'webdriver' property.")
         driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
             'source': "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
         })
+        self.logger.info("[AGENT_DEBUG] --- Exiting _create_driver ---")
         return driver
     
     def _setup_driver(self):
