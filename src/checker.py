@@ -305,6 +305,11 @@ class URLChecker:
             chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--disable-gpu')
             chrome_options.add_argument('--disable-software-rasterizer')
+            # Additional flags for stability in Linux/headless environments
+            chrome_options.add_argument('--remote-debugging-port=9222')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--single-process')
         
         return chrome_options
     
@@ -315,17 +320,13 @@ class URLChecker:
         Args:
             for_api: If True, creates driver for API calls
         """
-        chrome_options = self._create_chrome_options(for_api=for_api)
-        
-        try:
-            service = Service(
-                ChromeDriverManager().install(),
-                service_args=['--verbose', '--log-path=chromedriver.log']
             )
-            # Set command timeout to prevent hanging
-            service.start()
             driver = webdriver.Chrome(service=service, options=chrome_options)
         except Exception as e:
+            self.logger.warning(f"Error using webdriver-manager: {e}")
+            try:
+                # Try without specifying service (use PATH)
+                driver = webdriver.Chrome(
             self.logger.warning(f"Error using webdriver-manager: {e}")
             try:
                 service = Service(service_args=['--verbose', '--log-path=chromedriver.log'])
