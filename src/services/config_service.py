@@ -76,6 +76,7 @@ class ConfigService:
                 'page_load_timeout': self.config_loader.get_int('SELENIUM', 'page_load_timeout', 15),
                 'element_wait_timeout': self.config_loader.get_int('SELENIUM', 'element_wait_timeout', 10),
                 'headless': self.config_loader.get_bool('SELENIUM', 'headless', False),
+                'skip_driver_version_check': self.config_loader.get_bool('SELENIUM', 'skip_driver_version_check', False),
                 'max_attempts': self.config_loader.get_int('RETRY', 'max_attempts', 3),
                 'retry_delay': self.config_loader.get_float('RETRY', 'retry_delay', 2),
                 'page_delay': self.config_loader.get_float('PERFORMANCE', 'page_delay', 0.5),

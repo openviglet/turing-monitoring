@@ -126,7 +126,8 @@ class URLChecker:
         parallel_browsers: int = 3,
         error_status_codes: List[int] = None,
         resume_from_checkpoint: bool = True,
-        plugin_name: str = 'default_checker'
+        plugin_name: str = 'default_checker',
+        skip_driver_version_check: bool = False
     ):
         """
         Initialize URL checker with parallel processing support and browser reuse
@@ -146,6 +147,7 @@ class URLChecker:
             error_status_codes: List of status codes to consider as failures (e.g., [404, 500])
             resume_from_checkpoint: Resume from last checkpoint if available (default: True)
             plugin_name: The name of the checker plugin to use.
+            skip_driver_version_check: Skip ChromeDriver version check and use system driver
         """
         self.base_url = base_url
         self.locale = locale
@@ -160,6 +162,7 @@ class URLChecker:
         self.parallel_browsers = max(1, min(5, parallel_browsers))  # Limit 1-5
         self.error_status_codes = error_status_codes if error_status_codes else [404]
         self.resume_from_checkpoint = resume_from_checkpoint
+        self.skip_driver_version_check = skip_driver_version_check
         
         self.failed_urls = []
         self.total_urls_checked = 0
@@ -322,6 +325,18 @@ class URLChecker:
         """
         chrome_options = self._create_chrome_options(for_api=for_api)
         
+        # If skip version check, use system driver directly
+        if self.skip_driver_version_check:
+            self.logger.info("Skipping ChromeDriver version check - using system driver")
+            try:
+                driver = webdriver.Chrome(options=chrome_options)
+                self.logger.info("ChromeDriver initialized successfully from PATH (version check skipped)")
+                return driver
+            except Exception as e:
+                self.logger.error(f"Error using system chromedriver: {e}")
+                raise
+        
+        # Normal flow: try webdriver-manager first
         try:
             # Try to install/update ChromeDriver matching Chrome version
             service = Service(
@@ -339,6 +354,7 @@ class URLChecker:
                 self.logger.error(f"Error using system chromedriver: {e2}")
                 self.logger.error("Please ensure Chrome/Chromium and compatible ChromeDriver are installed")
                 self.logger.error("On Linux: sudo apt-get install chromium-chromedriver")
+                self.logger.error("Or set skip_driver_version_check=true in config.ini to use existing driver")
                 raise
         
         # Remove webdriver property to avoid detection

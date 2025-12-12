@@ -148,7 +148,8 @@ class CheckerService:
                 parallel_browsers=config['parallel_browsers'],
                 error_status_codes=config.get('error_status_codes', [404]),
                 resume_from_checkpoint=config.get('resume_from_checkpoint', True),
-                plugin_name=config.get('plugin_name', 'default_checker')
+                plugin_name=config.get('plugin_name', 'default_checker'),
+                skip_driver_version_check=config.get('skip_driver_version_check', False)
             )
             
             # Monkey patch to send updates to queue
