@@ -368,7 +368,34 @@ class URLChecker:
                 except Exception as e2:
                     self.logger.error(f"All attempts failed: {e2}")
                     raise
-        
+
+        # Linux with Snap Chromium specific handling
+        if platform.system() == 'Linux' and os.path.exists('/snap/bin/chromium-browser'):
+            self.logger.info("Detected Linux with Snap Chromium. Applying specific configuration.")
+            chrome_options.binary_location = "/snap/bin/chromium-browser"
+            # The chromedriver for snap is often installed via apt and located here:
+            chromedriver_path = "/usr/lib/chromium-browser/chromedriver"
+            if os.path.exists(chromedriver_path):
+                self.logger.info(f"Using chromedriver from: {chromedriver_path}")
+                try:
+                    service = Service(executable_path=chromedriver_path)
+                    driver = webdriver.Chrome(service=service, options=chrome_options)
+                    self.logger.info("ChromeDriver for Snap initialized successfully.")
+                    
+                    # Remove webdriver property to avoid detection
+                    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                        'source': '''
+                            Object.defineProperty(navigator, 'webdriver', {
+                                get: () => undefined
+                            });
+                        '''
+                    })
+                    return driver
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize Snap's chromedriver at {chromedriver_path}: {e}")
+            else:
+                self.logger.warning(f"Snap chromedriver not found at {chromedriver_path}. You might need to install it: sudo apt update && sudo apt install chromium-chromedriver")
+
         # Normal flow: try Selenium Manager first
         try:
             # Try to install/update ChromeDriver matching Chrome version
