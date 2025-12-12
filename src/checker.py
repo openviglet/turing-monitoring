@@ -338,7 +338,7 @@ class URLChecker:
         This version simplifies logic to prioritize Snap and then Selenium Manager,
         bypassing the problematic skip_driver_version_check setting.
         """
-        self.logger.info("[AGENT_DEBUG] --- Entering _create_driver (v5_log) ---")
+        self.logger.info("[AGENT_DEBUG] --- Entering _create_driver (v6_verbose_log) ---")
         chrome_options = self._create_chrome_options(for_api=for_api)
         service = None
         
@@ -368,7 +368,8 @@ class URLChecker:
                     # Enable verbose logging to a file
                     service = Service(
                         executable_path=snap_driver_path,
-                        log_output='chromedriver.txt'
+                        log_path='chromedriver.log',
+                        service_args=['--verbose']
                     )
                 else:
                     self.logger.warning(f"[AGENT_DEBUG] Snap Chromium detected, but driver not found at {snap_driver_path}.")
@@ -387,7 +388,10 @@ class URLChecker:
                 self.logger.warning("[AGENT_DEBUG] Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
             # Enable verbose logging for the fallback case as well
             self.logger.info("[AGENT_DEBUG] ENABLING VERBOSE LOGGING to chromedriver.log.")
-            service = Service(log_output='chromedriver.txt')
+            service = Service(
+                log_path='chromedriver.log',
+                service_args=['--verbose']
+            )
         else:
             self.logger.info("[AGENT_DEBUG] Service was configured by Snap logic. Skipping Selenium Manager default.")
 
