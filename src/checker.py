@@ -340,7 +340,7 @@ class URLChecker:
         try:
             # Try to install/update ChromeDriver matching Chrome version
             service = Service(
-                ChromeDriverManager(cache_valid_range=1).install()
+                ChromeDriverManager().install()
             )
             driver = webdriver.Chrome(service=service, options=chrome_options)
             self.logger.info("ChromeDriver initialized successfully via webdriver-manager")
