@@ -345,7 +345,7 @@ class URLChecker:
         This version simplifies logic to prioritize Snap and then Selenium Manager,
         bypassing the problematic skip_driver_version_check setting.
         """
-        self.logger.info("[AGENT_DEBUG] --- Entering _create_driver (v4_verbose) ---")
+        self.logger.info("[AGENT_DEBUG] --- Entering _create_driver (v5_log) ---")
         chrome_options = self._create_chrome_options(for_api=for_api)
         service = None
         
@@ -371,8 +371,12 @@ class URLChecker:
                 snap_driver_path = "/usr/lib/chromium-browser/chromedriver"
                 self.logger.info(f"[AGENT_DEBUG] Checking for Snap driver at {snap_driver_path}")
                 if os.path.exists(snap_driver_path):
-                    self.logger.info(f"[AGENT_DEBUG] Found associated driver at {snap_driver_path}. Using it.")
-                    service = Service(executable_path=snap_driver_path)
+                    self.logger.info(f"[AGENT_DEBUG] Found driver at {snap_driver_path}. ENABLING VERBOSE LOGGING to chromedriver.log.")
+                    # Enable verbose logging to a file
+                    service = Service(
+                        executable_path=snap_driver_path,
+                        log_output='chromedriver.log'
+                    )
                 else:
                     self.logger.warning(f"[AGENT_DEBUG] Snap Chromium detected, but driver not found at {snap_driver_path}.")
                     self.logger.warning("[AGENT_DEBUG] Will proceed with Selenium Manager, but this might fail.")
@@ -386,10 +390,11 @@ class URLChecker:
         # Priority 2: Default to Selenium Manager
         if not service:
             self.logger.info("[AGENT_DEBUG] Service not yet configured. Defaulting to Selenium Manager.")
-            # If skip_driver_version_check was true, we are ignoring it to fix the issue.
             if self.skip_driver_version_check:
                 self.logger.warning("[AGENT_DEBUG] Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
-            service = Service()
+            # Enable verbose logging for the fallback case as well
+            self.logger.info("[AGENT_DEBUG] ENABLING VERBOSE LOGGING to chromedriver.log.")
+            service = Service(log_output='chromedriver.log')
         else:
             self.logger.info("[AGENT_DEBUG] Service was configured by Snap logic. Skipping Selenium Manager default.")
 
