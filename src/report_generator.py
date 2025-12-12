@@ -59,8 +59,11 @@ class ReportGenerator:
             
             if failed_urls:
                 for item in failed_urls:
+                    # Handle both 'status' and 'status_code' fields
+                    status = item.get('status_code') or item.get('status', 'N/A')
+                    
                     f.write(f"URL: {item['url']}\n")
-                    f.write(f"Status Code: {item['status_code']}\n")
+                    f.write(f"Status Code: {status}\n")
                     f.write(f"API Page: {item['page']}\n")
                     f.write(f"Attempts: {item.get('attempts', 1)}\n")
                     if 'error' in item:

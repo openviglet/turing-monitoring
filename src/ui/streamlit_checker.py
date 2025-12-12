@@ -50,7 +50,10 @@ class StreamlitURLChecker:
                 page_delay=config['page_delay'],
                 url_check_delay=config['url_check_delay'],
                 disable_images=config['disable_images'],
-                parallel_browsers=config['parallel_browsers']
+                parallel_browsers=config['parallel_browsers'],
+                error_status_codes=config.get('error_status_codes', [404]),
+                resume_from_checkpoint=config.get('resume_from_checkpoint', True),
+                plugin_name=config.get('plugin_name', 'default_checker')
             )
             
             # Monkey patch to send updates to queue and check stop

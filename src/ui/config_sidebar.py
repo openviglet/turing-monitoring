@@ -79,6 +79,7 @@ def render_config_sidebar():
         'parallel_browsers': parallel_browsers,
         'error_status_codes': default_config['error_status_codes'],
         'resume_from_checkpoint': default_config['resume_from_checkpoint'],
+        'plugin_name': default_config.get('plugin_name', 'default_checker'),
         'email': default_config['email'],
         'brevo': default_config['brevo']
     }

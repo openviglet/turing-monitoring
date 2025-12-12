@@ -84,6 +84,7 @@ class ConfigService:
                 'parallel_browsers': self.config_loader.get_int('PERFORMANCE', 'parallel_browsers', 3),
                 'error_status_codes': error_status_codes,
                 'resume_from_checkpoint': resume_from_checkpoint,
+                'plugin_name': self.config_loader.get('CHECKER', 'plugin_name', 'default_checker'),
                 'email': {
                     'recipient': self.config_loader.get('EMAIL', 'recipient', ''),
                     'sender_email': self.config_loader.get('EMAIL', 'sender_email', 'noreply@example.com'),

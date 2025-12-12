@@ -147,7 +147,8 @@ class CheckerService:
                 disable_images=config['disable_images'],
                 parallel_browsers=config['parallel_browsers'],
                 error_status_codes=config.get('error_status_codes', [404]),
-                resume_from_checkpoint=config.get('resume_from_checkpoint', True)
+                resume_from_checkpoint=config.get('resume_from_checkpoint', True),
+                plugin_name=config.get('plugin_name', 'default_checker')
             )
             
             # Monkey patch to send updates to queue

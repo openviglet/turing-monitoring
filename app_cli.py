@@ -168,6 +168,9 @@ def main():
         # Checkpoint configuration
         resume_from_checkpoint = config.get_bool('PERFORMANCE', 'resume_from_checkpoint', True)
         
+        # Checker plugin configuration
+        plugin_name = config.get('CHECKER', 'plugin_name', 'default_checker')
+        
         # Report configurations
         output_dir = config.get('REPORT', 'output_dir', 'reports')
         max_urls_in_email = config.get_int('REPORT', 'max_urls_in_email', 50)
@@ -216,6 +219,20 @@ def main():
         stats_service = StatsService()
         email_service = EmailService()
         
+        # Force complete reset (clear any checkpoint/previous data)
+        stats_service.reset()
+        logger.info(f"Stats reset - total_failed: {stats_service.get_stats()['total_failed']}")
+        
+        # Clear any existing checkpoint to start fresh (unless resuming)
+        checkpoint_file = 'checkpoints/checker_progress.json'
+        if not resume_from_checkpoint and os.path.exists(checkpoint_file):
+            try:
+                os.remove(checkpoint_file)
+                print(f"✓ Cleared previous checkpoint\n")
+                logger.info("Checkpoint file removed")
+            except Exception as e:
+                logger.warning(f"Could not remove checkpoint: {e}")
+        
         # Prepare configuration for CheckerService
         checker_config = {
             'base_url': base_url,
@@ -230,7 +247,8 @@ def main():
             'disable_images': disable_images,
             'parallel_browsers': parallel_browsers,
             'error_status_codes': error_status_codes,
-            'resume_from_checkpoint': resume_from_checkpoint
+            'resume_from_checkpoint': resume_from_checkpoint,
+            'plugin_name': plugin_name
         }
         
         # Start checking in background (same as Streamlit)
@@ -241,9 +259,11 @@ def main():
         print("\n" + "=" * 80)
         print("CHECKING PROGRESS")
         print("=" * 80)
+        print("(Press Ctrl+C to stop)\n")
         
         import time
-        last_checked = 0
+        last_display_time = time.time()
+        has_displayed = False
         
         while checker_service.is_running():
             # Get updates from queue
@@ -255,6 +275,13 @@ def main():
                         update['page'],
                         update.get('total_pages', 0),
                         update.get('total_urls', 0)
+                    )
+                elif update['type'] == 'checking':
+                    stats_service.add_checking_log(
+                        update['url'],
+                        update['page'],
+                        update.get('attempt', 1),
+                        update['timestamp']
                     )
                 elif update['type'] == 'result':
                     stats_service.add_result(
@@ -268,16 +295,35 @@ def main():
                 elif update['type'] == 'complete':
                     break
             
-            # Display progress
+            # Display progress (update every 0.3s or when data changes)
+            current_time = time.time()
             stats = stats_service.get_stats()
-            if stats['total_checked'] > last_checked:
-                last_checked = stats['total_checked']
+            
+            should_display = (
+                (current_time - last_display_time >= 0.3) and 
+                (stats['total_urls'] > 0 and stats['total_checked'] > 0)
+            )
+            
+            if should_display or not has_displayed:
                 progress_pct = int((stats['total_checked'] / stats['total_urls'] * 100)) if stats['total_urls'] > 0 else 0
                 elapsed = stats_service.get_elapsed_time()
                 eta = stats.get('estimated_time', 'calculating...')
+                rps = stats_service.get_requests_per_second()
                 
-                print(f"\r  Progress: {stats['total_checked']}/{stats['total_urls']} ({progress_pct}%) | "
-                      f"Failed: {stats['total_failed']} | Elapsed: {elapsed} | ETA: {eta}      ", end='', flush=True)
+                # Build progress line
+                progress_line = (
+                    f"\r  Page {stats['current_page']}/{stats['total_pages']} | "
+                    f"URLs: {stats['total_checked']}/{stats['total_urls']} ({progress_pct}%) | "
+                    f"Failed: {stats['total_failed']} | "
+                    f"Speed: {rps:.1f} req/s | "
+                    f"Elapsed: {elapsed} | "
+                    f"ETA: {eta}"
+                )
+                
+                print(progress_line.ljust(120), end='', flush=True)
+                
+                last_display_time = current_time
+                has_displayed = True
             
             time.sleep(0.5)
         
