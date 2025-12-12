@@ -307,7 +307,7 @@ def main():
         
         # Generate reports
         logger.info("Generating reports...")
-        report_gen = ReportGenerator(output_dir, error_status_codes=error_status_codes)
+        report_gen = ReportGenerator(output_dir, error_status_codes=default_config['error_status_codes'])
         txt_report, json_report = report_gen.generate(failed_urls)
         
         print(f"\n📄 Reports generated:")
