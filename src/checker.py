@@ -341,12 +341,14 @@ class URLChecker:
     
     def _create_driver(self, for_api: bool = False) -> webdriver.Chrome:
         """
-        Create a new Chrome driver instance
+        Create a new Chrome driver instance.
+        This version simplifies logic to prioritize Snap and then Selenium Manager,
+        bypassing the problematic skip_driver_version_check setting.
         """
         chrome_options = self._create_chrome_options(for_api=for_api)
-        driver = None
-
-        # Logic for Linux with Snap Chromium
+        service = None
+        
+        # Priority 1: Handle Linux with Snap Chromium
         if platform.system() == 'Linux':
             snap_browser_path = None
             if os.path.exists('/snap/bin/chromium-browser'):
@@ -358,62 +360,35 @@ class URLChecker:
                 self.logger.info(f"Detected Snap Chromium at {snap_browser_path}")
                 chrome_options.binary_location = snap_browser_path
                 
-                # For Snap, the driver is often installed via apt
                 snap_driver_path = "/usr/lib/chromium-browser/chromedriver"
                 if os.path.exists(snap_driver_path):
-                    self.logger.info(f"Attempting to use associated driver at {snap_driver_path}")
-                    try:
-                        service = Service(executable_path=snap_driver_path)
-                        driver = webdriver.Chrome(service=service, options=chrome_options)
-                        self.logger.info("Successfully initialized driver for Snap Chromium.")
-                    except Exception as e:
-                        self.logger.warning(f"Found Snap driver at {snap_driver_path} but failed to use it: {e}")
+                    self.logger.info(f"Found associated driver at {snap_driver_path}. Using it.")
+                    service = Service(executable_path=snap_driver_path)
                 else:
-                    self.logger.info(f"Driver for Snap not found at {snap_driver_path}. Consider running: sudo apt install chromium-chromedriver")
+                    self.logger.warning(f"Snap Chromium detected, but driver not found at {snap_driver_path}.")
+                    self.logger.warning("Will proceed with Selenium Manager, but this might fail.")
+                    self.logger.warning("For a more reliable setup, please run: sudo apt install chromium-chromedriver")
 
-        # If a driver was created by the special Snap logic, return it.
-        if driver:
-            # Remove webdriver property to avoid detection
-            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"})
-            return driver
-
-        # If `skip_driver_version_check` is set, prioritize using a driver from PATH.
-        # This will be skipped if the Snap logic above succeeded.
-        if self.skip_driver_version_check:
-            self.logger.info("skip_driver_version_check=true. Attempting to use chromedriver from system PATH.")
-            try:
-                service = Service() # Finds driver in PATH
-                driver = webdriver.Chrome(service=service, options=chrome_options)
-                self.logger.info("Successfully initialized driver from system PATH.")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize driver from PATH: {e}")
-                self.logger.error("Ensure a compatible chromedriver is in your system's PATH or set skip_driver_version_check=false.")
-                raise # As requested by config, fail if system driver isn't found/working.
-        
-        # If a driver was created, return it.
-        if driver:
-            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"})
-            return driver
-
-        # Default fallback: Use Selenium Manager to download and manage the driver.
-        # This runs if Snap logic fails and skip_check is false.
-        self.logger.info("Attempting to use Selenium Manager for automatic driver setup.")
-        try:
+        # Priority 2: Default to Selenium Manager
+        # This will run if not on Linux, or if the Snap driver wasn't found.
+        if not service:
+            self.logger.info("Initializing driver with Selenium Manager (automatic setup).")
+            # If skip_driver_version_check was true, we are ignoring it to fix the issue.
+            if self.skip_driver_version_check:
+                self.logger.warning("Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
             service = Service()
+
+        try:
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.logger.info("Successfully initialized driver using Selenium Manager.")
+            self.logger.info("WebDriver initialized successfully.")
         except Exception as e:
-            self.logger.error(f"Selenium Manager failed to initialize a driver: {e}")
-            self.logger.error("Please ensure Google Chrome or Chromium browser is installed correctly.")
+            self.logger.error(f"FATAL: Failed to initialize any WebDriver: {e}")
+            self.logger.error("Please ensure Google Chrome or Chromium is installed and accessible.")
             raise
 
         # Final setup and return
         driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            'source': '''
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-            '''
+            'source': "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
         })
         return driver
     
