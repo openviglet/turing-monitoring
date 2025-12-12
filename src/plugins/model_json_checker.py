@@ -19,7 +19,8 @@ class ModelJsonChecker(BaseCheckerPlugin):
         """
         Check a single URL by appending .model.json and getting HTTP status.
         """
-        model_json_url = url + ".model.json"
+
+        model_json_url = url.removesuffix(".html") + ".model.json"
         
         try:
             # Navigate to URL
