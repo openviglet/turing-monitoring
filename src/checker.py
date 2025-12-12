@@ -22,7 +22,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
-from webdriver_manager.chrome import ChromeDriverManager
 
 # Increase urllib3 connection pool size for parallel browsers
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -370,16 +369,13 @@ class URLChecker:
                     self.logger.error(f"All attempts failed: {e2}")
                     raise
         
-        # Normal flow: try webdriver-manager first
+        # Normal flow: try Selenium Manager first
         try:
             # Try to install/update ChromeDriver matching Chrome version
-            service = Service(
-                ChromeDriverManager().install()
-            )
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.logger.info("ChromeDriver initialized successfully via webdriver-manager")
+            driver = webdriver.Chrome(service=Service(), options=chrome_options)
+            self.logger.info("ChromeDriver initialized successfully via Selenium Manager")
         except Exception as e:
-            self.logger.warning(f"Error using webdriver-manager: {e}")
+            self.logger.warning(f"Error using Selenium Manager: {e}")
             try:
                 # Try without specifying service (use PATH or system chromedriver)
                 driver = webdriver.Chrome(options=chrome_options)
