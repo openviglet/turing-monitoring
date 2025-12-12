@@ -323,17 +323,22 @@ class URLChecker:
         chrome_options = self._create_chrome_options(for_api=for_api)
         
         try:
+            # Try to install/update ChromeDriver matching Chrome version
             service = Service(
-                ChromeDriverManager().install()
+                ChromeDriverManager(cache_valid_range=1).install()
             )
             driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.logger.info("ChromeDriver initialized successfully via webdriver-manager")
         except Exception as e:
             self.logger.warning(f"Error using webdriver-manager: {e}")
             try:
-                # Try without specifying service (use PATH)
+                # Try without specifying service (use PATH or system chromedriver)
                 driver = webdriver.Chrome(options=chrome_options)
+                self.logger.info("ChromeDriver initialized successfully from PATH")
             except Exception as e2:
                 self.logger.error(f"Error using system chromedriver: {e2}")
+                self.logger.error("Please ensure Chrome/Chromium and compatible ChromeDriver are installed")
+                self.logger.error("On Linux: sudo apt-get install chromium-chromedriver")
                 raise
         
         # Remove webdriver property to avoid detection
