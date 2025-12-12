@@ -320,18 +320,18 @@ class URLChecker:
         Args:
             for_api: If True, creates driver for API calls
         """
+        chrome_options = self._create_chrome_options(for_api=for_api)
+        
+        try:
+            service = Service(
+                ChromeDriverManager().install()
             )
             driver = webdriver.Chrome(service=service, options=chrome_options)
         except Exception as e:
             self.logger.warning(f"Error using webdriver-manager: {e}")
             try:
                 # Try without specifying service (use PATH)
-                driver = webdriver.Chrome(
-            self.logger.warning(f"Error using webdriver-manager: {e}")
-            try:
-                service = Service(service_args=['--verbose', '--log-path=chromedriver.log'])
-                service.start()
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                driver = webdriver.Chrome(options=chrome_options)
             except Exception as e2:
                 self.logger.error(f"Error using system chromedriver: {e2}")
                 raise
