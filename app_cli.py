@@ -67,19 +67,13 @@ def main():
     print_banner()
     
     try:
-        # Load configurations
+        # Load configurations using ConfigService (same as web interface)
         logger.info("Loading configurations...")
-        config = ConfigLoader(args.config)
+        config_service = ConfigService()
+        default_config = config_service.get_default_config()
         
         # Get all base URLs from config
-        base_urls = {}
-        api_section = config.config['API']
-        for key in api_section:
-            if key.startswith('base_url.'):
-                value = api_section[key]
-                if ';' in value:
-                    name, url = value.split(';', 1)
-                    base_urls[name.strip()] = url.strip()
+        base_urls = default_config['base_urls']
         
         # Select base URL
         if args.url_name:
@@ -137,43 +131,19 @@ def main():
                     print("\n\n❌ Operation cancelled by user")
                     return 1
         
-        # Get configurations
-        locale = config.get('API', 'locale', 'pt')
-        email_recipient = config.get('EMAIL', 'recipient')
-        email_sender = config.get('EMAIL', 'sender_email')
-        email_sender_name = config.get('EMAIL', 'sender_name')
-        brevo_api_key = config.get('BREVO', 'api_key')
+        # Get configurations from ConfigService (centralized, same as web)
+        email_recipient = default_config['email']['recipient']
+        email_sender = default_config['email']['sender_email']
+        email_sender_name = default_config['email']['sender_name']
+        brevo_api_key = default_config['brevo']['api_key']
         
-        # Selenium configurations
-        page_load_timeout = config.get_int('SELENIUM', 'page_load_timeout', 15)
-        element_wait_timeout = config.get_int('SELENIUM', 'element_wait_timeout', 10)
-        headless = args.headless or config.get_bool('SELENIUM', 'headless', False)
-        
-        # Retry configurations
-        max_attempts = config.get_int('RETRY', 'max_attempts', 3)
-        retry_delay = config.get_float('RETRY', 'retry_delay', 2)
-        
-        # Performance configurations
-        page_delay = config.get_float('PERFORMANCE', 'page_delay', 0.5)
-        url_check_delay = config.get_float('PERFORMANCE', 'url_check_delay', 0.3)
-        disable_images = config.get_bool('PERFORMANCE', 'disable_images', True)
-        parallel_browsers = config.get_int('PERFORMANCE', 'parallel_browsers', 1)
-        
-        # Error status codes configuration
-        error_codes_str = config.get('PERFORMANCE', 'error_status_codes', '404')
-        error_status_codes = [int(code.strip()) for code in error_codes_str.split(',') if code.strip().isdigit()]
-        if not error_status_codes:
-            error_status_codes = [404]  # Default to 404 if invalid
-        
-        # Checkpoint configuration
-        resume_from_checkpoint = config.get_bool('PERFORMANCE', 'resume_from_checkpoint', True)
-        
-        # Checker plugin configuration
-        plugin_name = config.get('CHECKER', 'plugin_name', 'default_checker')
+        # Override headless from args if provided
+        headless = args.headless or default_config['headless']
         
         # Report configurations
-        output_dir = config.get('REPORT', 'output_dir', 'reports')
-        max_urls_in_email = config.get_int('REPORT', 'max_urls_in_email', 50)
+        config_loader = ConfigLoader(args.config)
+        output_dir = config_loader.get('REPORT', 'output_dir', 'reports')
+        max_urls_in_email = config_loader.get_int('REPORT', 'max_urls_in_email', 50)
         
         # Check email configuration
         send_email = not args.no_email
@@ -208,10 +178,12 @@ def main():
         
         # Create checker
         logger.info("Initializing checker...")
-        logger.info(f"Error status codes configured: {error_status_codes}")
-        logger.info(f"Resume from checkpoint: {resume_from_checkpoint}")
-        print(f"⚙️  Error status codes: {', '.join(map(str, error_status_codes))}")
-        print(f"♻️  Resume from checkpoint: {'Enabled' if resume_from_checkpoint else 'Disabled'}\n")
+        logger.info(f"Error status codes configured: {default_config['error_status_codes']}")
+        logger.info(f"Resume from checkpoint: {default_config['resume_from_checkpoint']}")
+        logger.info(f"Plugin: {default_config['plugin_name']}")
+        print(f"⚙️  Error status codes: {', '.join(map(str, default_config['error_status_codes']))}")
+        print(f"♻️  Resume from checkpoint: {'Enabled' if default_config['resume_from_checkpoint'] else 'Disabled'}")
+        print(f"🔌 Plugin: {default_config['plugin_name']}\n")
         
         # Initialize services (same as Streamlit app)
         config_service = ConfigService()
@@ -225,7 +197,7 @@ def main():
         
         # Clear any existing checkpoint to start fresh (unless resuming)
         checkpoint_file = 'checkpoints/checker_progress.json'
-        if not resume_from_checkpoint and os.path.exists(checkpoint_file):
+        if not default_config['resume_from_checkpoint'] and os.path.exists(checkpoint_file):
             try:
                 os.remove(checkpoint_file)
                 print(f"✓ Cleared previous checkpoint\n")
@@ -233,22 +205,22 @@ def main():
             except Exception as e:
                 logger.warning(f"Could not remove checkpoint: {e}")
         
-        # Prepare configuration for CheckerService
+        # Prepare configuration for CheckerService (use default_config directly)
         checker_config = {
             'base_url': base_url,
-            'locale': locale,
-            'page_load_timeout': page_load_timeout,
-            'element_wait_timeout': element_wait_timeout,
+            'locale': default_config['locale'],
+            'page_load_timeout': default_config['page_load_timeout'],
+            'element_wait_timeout': default_config['element_wait_timeout'],
             'headless': headless,
-            'max_attempts': max_attempts,
-            'retry_delay': retry_delay,
-            'page_delay': page_delay,
-            'url_check_delay': url_check_delay,
-            'disable_images': disable_images,
-            'parallel_browsers': parallel_browsers,
-            'error_status_codes': error_status_codes,
-            'resume_from_checkpoint': resume_from_checkpoint,
-            'plugin_name': plugin_name
+            'max_attempts': default_config['max_attempts'],
+            'retry_delay': default_config['retry_delay'],
+            'page_delay': default_config['page_delay'],
+            'url_check_delay': default_config['url_check_delay'],
+            'disable_images': default_config['disable_images'],
+            'parallel_browsers': default_config['parallel_browsers'],
+            'error_status_codes': default_config['error_status_codes'],
+            'resume_from_checkpoint': default_config['resume_from_checkpoint'],
+            'plugin_name': default_config['plugin_name']
         }
         
         # Start checking in background (same as Streamlit)
