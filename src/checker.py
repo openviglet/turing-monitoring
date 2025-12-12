@@ -231,6 +231,8 @@ class URLChecker:
         # Critical flags for Linux/snap/container environments
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-setuid-sandbox')
+        chrome_options.add_argument('--no-zygote')
         
         # Increase stability - prevent crashes
         chrome_options.add_argument('--disable-features=VizDisplayCompositor')
@@ -310,22 +312,13 @@ class URLChecker:
         
         # Headless configuration
         if self.headless or platform.system() == 'Linux':
-            chrome_options.add_argument('--headless=new')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-software-rasterizer')
-            # Additional flags for stability in Linux/headless/snap environments
-            # Use random port for debugging to avoid conflicts
+            self.logger.info("[AGENT_DEBUG] Applying simplified headless configuration for Linux environment.")
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            # Use a random debugging port to avoid conflicts in parallel runs
             debug_port = random.randint(9222, 9999)
-            chrome_options.add_argument(f'--remote-debugging-port={debug_port}')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--start-maximized')
-            chrome_options.add_argument('--disable-setuid-sandbox')
-            chrome_options.add_argument('--no-zygote')
-            # Additional stability flags for renderer connection
-            chrome_options.add_argument('--disable-logging')
-            chrome_options.add_argument('--log-level=3')
-            chrome_options.add_argument('--silent')
-            chrome_options.add_argument('--disable-crash-reporter')
+            chrome_options.add_argument(f"--remote-debugging-port={debug_port}")
         
         # Critical flags for renderer connection stability (all platforms)
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -375,7 +368,7 @@ class URLChecker:
                     # Enable verbose logging to a file
                     service = Service(
                         executable_path=snap_driver_path,
-                        log_output='chromedriver.log'
+                        log_output='chromedriver.txt'
                     )
                 else:
                     self.logger.warning(f"[AGENT_DEBUG] Snap Chromium detected, but driver not found at {snap_driver_path}.")
@@ -394,7 +387,7 @@ class URLChecker:
                 self.logger.warning("[AGENT_DEBUG] Ignoring 'skip_driver_version_check = true' to attempt an automatic fix.")
             # Enable verbose logging for the fallback case as well
             self.logger.info("[AGENT_DEBUG] ENABLING VERBOSE LOGGING to chromedriver.log.")
-            service = Service(log_output='chromedriver.log')
+            service = Service(log_output='chromedriver.txt')
         else:
             self.logger.info("[AGENT_DEBUG] Service was configured by Snap logic. Skipping Selenium Manager default.")
 
