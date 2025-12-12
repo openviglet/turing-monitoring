@@ -10,6 +10,8 @@ import os
 import subprocess
 import psutil
 import urllib3
+import tempfile
+import random
 from datetime import datetime
 from typing import List, Dict, Optional
 from queue import Queue
@@ -231,6 +233,11 @@ class URLChecker:
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--no-sandbox')
         
+        # Increase stability - prevent crashes
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        chrome_options.add_argument('--disable-features=IsolateOrigins')
+        chrome_options.add_argument('--disable-site-isolation-trials')
+        
         if for_api:
             # API calls - Allow JavaScript but block heavy resources
             prefs = {
@@ -271,7 +278,6 @@ class URLChecker:
         chrome_options.add_argument('--disable-infobars')
         chrome_options.add_argument('--disable-notifications')
         chrome_options.add_argument('--disable-popup-blocking')
-        chrome_options.add_argument('--blink-settings=imagesEnabled=false')
         
         # Prevent hanging on slow connections
         chrome_options.add_argument('--dns-prefetch-disable')
@@ -309,11 +315,28 @@ class URLChecker:
             chrome_options.add_argument('--disable-gpu')
             chrome_options.add_argument('--disable-software-rasterizer')
             # Additional flags for stability in Linux/headless/snap environments
-            chrome_options.add_argument('--remote-debugging-port=9222')
+            # Use random port for debugging to avoid conflicts
+            debug_port = random.randint(9222, 9999)
+            chrome_options.add_argument(f'--remote-debugging-port={debug_port}')
             chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument('--start-maximized')
             chrome_options.add_argument('--disable-setuid-sandbox')
             chrome_options.add_argument('--no-zygote')
+            # Additional stability flags for renderer connection
+            chrome_options.add_argument('--disable-logging')
+            chrome_options.add_argument('--log-level=3')
+            chrome_options.add_argument('--silent')
+            chrome_options.add_argument('--disable-crash-reporter')
+        
+        # Critical flags for renderer connection stability (all platforms)
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_argument('--enable-features=NetworkService,NetworkServiceInProcess')
+        chrome_options.add_argument('--force-device-scale-factor=1')
+        chrome_options.add_argument('--disable-blink-features')
+        
+        # User data directory to avoid conflicts
+        user_data_dir = tempfile.mkdtemp(prefix='chrome_')
+        chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
         
         return chrome_options
     
@@ -330,12 +353,22 @@ class URLChecker:
         if self.skip_driver_version_check:
             self.logger.info("Skipping ChromeDriver version check - using system driver")
             try:
-                driver = webdriver.Chrome(options=chrome_options)
+                # Create service with verbose logging
+                service = Service(log_path='NUL' if platform.system() == 'Windows' else '/dev/null')
+                service.creation_flags = 0x08000000  # CREATE_NO_WINDOW flag for Windows
+                driver = webdriver.Chrome(service=service, options=chrome_options)
                 self.logger.info("ChromeDriver initialized successfully from PATH (version check skipped)")
                 return driver
             except Exception as e:
                 self.logger.error(f"Error using system chromedriver: {e}")
-                raise
+                # Last resort: try without service
+                try:
+                    driver = webdriver.Chrome(options=chrome_options)
+                    self.logger.info("ChromeDriver initialized without service")
+                    return driver
+                except Exception as e2:
+                    self.logger.error(f"All attempts failed: {e2}")
+                    raise
         
         # Normal flow: try webdriver-manager first
         try:

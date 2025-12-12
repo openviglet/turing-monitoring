@@ -57,6 +57,7 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Verbose mode')
     parser.add_argument('--headless', action='store_true', help='Headless mode (no GUI)')
     parser.add_argument('--no-email', action='store_true', help='Do not send email')
+    parser.add_argument('--skip-driver-check', action='store_true', help='Skip ChromeDriver version check (use system driver)')
     args = parser.parse_args()
     
     # Configure logging
@@ -140,6 +141,9 @@ def main():
         # Override headless from args if provided
         headless = args.headless or default_config['headless']
         
+        # Override skip_driver_version_check from args if provided
+        skip_driver_check = args.skip_driver_check or default_config['skip_driver_version_check']
+        
         # Report configurations
         config_loader = ConfigLoader(args.config)
         output_dir = config_loader.get('REPORT', 'output_dir', 'reports')
@@ -220,7 +224,8 @@ def main():
             'parallel_browsers': default_config['parallel_browsers'],
             'error_status_codes': default_config['error_status_codes'],
             'resume_from_checkpoint': default_config['resume_from_checkpoint'],
-            'plugin_name': default_config['plugin_name']
+            'plugin_name': default_config['plugin_name'],
+            'skip_driver_version_check': skip_driver_check
         }
         
         # Start checking in background (same as Streamlit)
