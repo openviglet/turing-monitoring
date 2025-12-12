@@ -674,7 +674,8 @@ class URLChecker:
             Dictionary with API response or None on error
         """
         try:
-            url = f"{self.base_url}?locale={self.locale}&page={page}"
+            # Use 'p' parameter for pagination (not 'page')
+            url = f"{self.base_url}?locale={self.locale}&p={page}"
             self.driver.get(url)
             
             # Wait for body text to be present
@@ -707,47 +708,28 @@ class URLChecker:
             self.logger.warning("extract_urls_from_results: Received empty or None data")
             return []
         
-        results = data.get('results', [])
-        if not results:
-            self.logger.warning("extract_urls_from_results: 'results' key not found or is empty in the response.")
-            # Log the entire response if it's small, otherwise a snippet
-            data_str = str(data)
-            if len(data_str) > 500:
-                self.logger.debug(f"Full response data (truncated): {data_str[:500]}...")
-            else:
-                self.logger.debug(f"Full response data: {data_str}")
+        results = data.get('results', {})
+        if not results or not isinstance(results, dict):
+            self.logger.warning("extract_urls_from_results: 'results' key not found or is not a dict")
             return []
+        
+        documents = results.get('document', [])
+        if not documents:
+            self.logger.warning("extract_urls_from_results: No documents found in results")
+            return []
+        
         urls = []
-
         try:
-            results = data.get('results', {}).get('document', [])
-            for document in results:
-                fields = document.get('fields', {})
-                url = fields.get('url')
-                
+            for document in documents:
+                # URL is in the 'source' field
+                url = document.get('source')
                 if url:
-                    if isinstance(url, list):
-                        url = url[0] if url else None
-                    if url:
-                        urls.append(url)
+                    urls.append(url)
                         
         except Exception as e:
             self.logger.error(f"Error extracting URLs: {e}")
         
         self.logger.info(f"extract_urls_from_results: Extracted {len(urls)} URLs")
-        if len(urls) == 0 and len(results) > 0:
-            self.logger.warning("extract_urls_from_results: Found results, but no 'url' keys in them.")
-            
-            # Log the keys of the first result to help identify the correct key
-            if isinstance(results, list) and len(results) > 0:
-                first_item = results[0]
-                if isinstance(first_item, dict):
-                    self.logger.debug(f"Keys in the first result item: {list(first_item.keys())}")
-                else:
-                    self.logger.debug(f"First result item is not a dictionary: {first_item}")
-            else:
-                self.logger.debug(f"Unexpected 'results' type or empty list: {type(results)}")
-            
         return urls
     
     def _save_checkpoint(self, current_page: int, last_completed_page: int):
